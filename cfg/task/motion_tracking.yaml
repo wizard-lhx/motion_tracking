@@ -1,0 +1,99 @@
+# @package task
+name: motion_tracking
+
+viewer:
+  resolution: [1280, 720]
+  lookat: [0., 0., 0.]
+  eye: [4.0, 4.0, 4.0]
+
+robot: 
+  name: g1_waist_unlocked
+terrain: plane
+
+# common
+num_envs: 4096
+max_episode_length: 1000
+
+sim:
+  step_dt: 0.02
+  isaac_physics_dt: 0.005
+  mujoco_physics_dt: 0.002
+
+input:
+  action:
+    _target_: JointPosition
+    action_scaling: 
+      .*hip_pitch.*: 0.548
+      .*hip_roll.*: 0.351
+      .*hip_yaw.*: 0.548
+      .*knee.*: 0.351
+      waist_yaw_joint: 0.541
+      waist_roll_joint: 0.439
+      waist_pitch_joint: 0.439
+      .*ankle.*: 0.439
+      .*shoulder.*: 0.173
+      .*elbow_joint: 0.173
+      # .*wrist_roll.*: 0.173
+      # .*wrist_pitch.*: 0.293
+      # .*wrist_yaw.*: 0.293
+    max_delay: 2
+    alpha_range: [0.8, 1.0]
+
+command:
+  _target_: Twist
+  stand_prob: 1.0
+  curriculum: false
+
+observation:
+  policy:
+    command: {}
+    joint_pos: {}
+    joint_vel: {}
+    prev_actions: {}
+    projected_gravity_b: {}
+
+reward:
+  loco:
+    linvel_exp:         {weight: 1.5}
+    angvel_z_exp:       {weight: 1.2}
+    body_upright:       {weight: 1.0, body_name: "torso_link"}
+
+    joint_deviation_l2: {weight: 0.1}
+    joint_vel_l2:       {weight: 1.0e-3}
+    joint_acc_l2:       {weight: 1.0e-7}
+    joint_torques_l2:   {weight: 5.0e-6}
+    action_rate_l2:     {weight: 0.005}
+
+randomization:
+  perturb_body_mass:
+    .*: [0.8, 1.2]
+  perturb_body_materials:
+    body_names: ".*ankle_roll_link"
+    static_friction_range: [0.6, 2.0]
+    dynamic_friction_range: [0.6, 2.0]
+    restitution_range: [0.0, 0.2]
+  actuator_pd_gains:
+    stiffness_range:
+      .*: [0.8, 1.1]
+    damping_range:
+      .*: [0.8, 1.1]
+  reset_joint_states_uniform:
+    pos_ranges:
+      .*: [-0.1, 0.1]
+    rel: true
+  push_body:
+    body_names: "torso_link"
+    force_range: [20, 100]
+    min_interval: 100
+    decay: 0.9
+
+termination:
+  max_episode_length: {}
+  crash: 
+    body_names_expr:
+    - "pelvis"
+    - "torso_link"
+    - ".*_hip_.*_link"
+    - ".*shoulder_.*_link"
+    - ".*(wrist|elbow).*"
+  fall_over: {xy_thres: 0.9}
