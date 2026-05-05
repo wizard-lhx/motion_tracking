@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "motion_tracking"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "active_adaptation",
+]
+
+[project.entry-points."active_adaptation.projects"]
+motion_tracking = "motion_tracking"
+
+[project.entry-points."active_adaptation.learning"]
+motion_tracking = "motion_tracking_learning"
+
+[tool.setuptools.package-data]
+"*" = ["**/*"]
