@@ -79,7 +79,7 @@ class MotionTrackingCommand(Command):
             slice(None),
             env_ids,
         )
-        self.asset.set_joint_position_target(joint_pos)
+        self.asset.set_joint_position_target(joint_pos, env_ids=env_ids)
         self._cum_error[env_ids] = 0.0
 
     @property
