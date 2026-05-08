@@ -1,18 +1,21 @@
 import argparse
-import json
 import time
-from typing import List, Sequence
-from dataclasses import dataclass
+from typing import Sequence
 from pathlib import Path
 
 import numpy as np
+import torch
 
 import mujoco
 from mujoco import viewer
 
+try:
+    from motion_tracking.dataset import DATASET_DIR, MotionDataset, list_datasets, load_dataset
+except ModuleNotFoundError:
+    from dataset import DATASET_DIR, MotionDataset, list_datasets, load_dataset
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 MODEL_PATH = PROJECT_ROOT / "active-adaptation" / "active_adaptation" / "assets" / "G1" / "mjcf" / "g1.xml"
-DATASET_DIR = PROJECT_ROOT / "motion_tracking" / "dataset"
 FPS = 50.0
 
 # MuJoCo viewer uses GLFW key codes for non-printable keys.
@@ -21,72 +24,6 @@ KEY_RIGHT = 262
 KEY_LEFT = 263
 KEY_DOWN = 264
 KEY_UP = 265
-
-@dataclass
-class MotionDataset:
-    name: str
-    root_pos_w: np.memmap
-    root_quat_w: np.memmap
-    joint_pos: np.memmap
-    joint_names: List[str]
-    starts: List[int]
-    ends: List[int]
-    num_frames: int
-    num_joints: int
-
-def load_dataset(dataset_name: str) -> MotionDataset:
-    dataset_root = DATASET_DIR / dataset_name
-    td_dir = dataset_root / "_tensordict"
-    if not td_dir.exists():
-        raise FileNotFoundError(f"Dataset not found: {dataset_root}")
-
-    with open(td_dir / "meta.json", "r") as f:
-        td_meta = json.load(f)
-    with open(dataset_root / "meta_motion.json", "r") as f:
-        motion_meta = json.load(f)
-
-    num_frames = td_meta["shape"][0]
-    num_joints = td_meta["joint_pos"]["shape"][1]
-    dtype = np.float16
-
-    root_pos_w = np.memmap(
-        td_dir / "root_pos_w.memmap",
-        dtype=dtype,
-        mode="r",
-        shape=(num_frames, 3),
-    )
-    root_quat_w = np.memmap(
-        td_dir / "root_quat_w.memmap",
-        dtype=dtype,
-        mode="r",
-        shape=(num_frames, 4),
-    )
-    joint_pos = np.memmap(
-        td_dir / "joint_pos.memmap",
-        dtype=dtype,
-        mode="r",
-        shape=(num_frames, num_joints),
-    )
-
-    return MotionDataset(
-        name=dataset_name,
-        root_pos_w=root_pos_w,
-        root_quat_w=root_quat_w,
-        joint_pos=joint_pos,
-        joint_names=motion_meta["joint_names"],
-        starts=motion_meta["starts"],
-        ends=motion_meta["ends"],
-        num_frames=num_frames,
-        num_joints=num_joints,
-    )
-
-
-def list_datasets() -> list[str]:
-    return sorted(
-        path.name
-        for path in DATASET_DIR.iterdir()
-        if path.is_dir() and (path / "_tensordict").exists()
-    )
 
 
 class MujocoRobot:
@@ -144,14 +81,14 @@ class MujocoRobot:
 
     def set_pose(
         self,
-        root_pos_w: Sequence[float] | np.ndarray,
-        root_quat_w: Sequence[float] | np.ndarray,
-        joint_pos: Sequence[float] | np.ndarray,
+        root_pos_w: torch.Tensor,
+        root_quat_w: torch.Tensor,
+        joint_pos: torch.Tensor,
     ) -> None:
         """Write one motion frame into the MuJoCo state."""
-        self.data.qpos[:3] = root_pos_w
-        self.data.qpos[3:7] = root_quat_w
-        self.data.qpos[self.joint_qpos_addr] = joint_pos
+        self.data.qpos[:3] = root_pos_w.detach().cpu().numpy()
+        self.data.qpos[3:7] = root_quat_w.detach().cpu().numpy()
+        self.data.qpos[self.joint_qpos_addr] = joint_pos.detach().cpu().numpy()
         self.data.qvel[:6] = 0.0
         mujoco.mj_forward(self.model, self.data)
 
@@ -177,15 +114,15 @@ class MotionPlayer:
 
     @property
     def num_motions(self) -> int:
-        return len(self.dataset.starts)
+        return self.dataset.num_motions
 
     @property
     def motion_start(self) -> int:
-        return int(self.dataset.starts[self.motion_idx])
+        return int(self.dataset.starts[self.motion_idx].item())
 
     @property
     def motion_end(self) -> int:
-        return int(self.dataset.ends[self.motion_idx])
+        return int(self.dataset.ends[self.motion_idx].item())
 
     @property
     def motion_length(self) -> int:
@@ -196,11 +133,11 @@ class MotionPlayer:
         return self.motion_start + self.frame
 
     def apply_current_frame(self) -> None:
-        idx = self.global_frame
+        frame = self.dataset.get_slice(self.motion_idx, self.frame)
         self.robot.set_pose(
-            self.dataset.root_pos_w[idx],
-            self.dataset.root_quat_w[idx],
-            self.dataset.joint_pos[idx],
+            frame.root_pos_w[0, 0],
+            frame.root_quat_w[0, 0],
+            frame.joint_pos[0, 0],
         )
 
     def step(self, frames: int = 1) -> None:
