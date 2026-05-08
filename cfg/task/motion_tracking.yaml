@@ -40,9 +40,10 @@ input:
     alpha_range: [0.8, 1.0]
 
 command:
-  _target_: Twist
-  stand_prob: 1.0
-  curriculum: false
+  _target_: motion_tracking.MotionTrackingCommand
+  data_path: lafan_all
+  future_steps: [0, 12, 24, 36]
+  random_start: true
 
 observation:
   policy:
@@ -54,14 +55,14 @@ observation:
 
 reward:
   loco:
-    linvel_exp:         {weight: 1.5}
-    angvel_z_exp:       {weight: 1.2}
-    body_upright:       {weight: 1.0, body_name: "torso_link"}
+    # linvel_exp:         {weight: 1.5}
+    # angvel_z_exp:       {weight: 1.2}
+    # body_upright:       {weight: 1.0, body_name: "torso_link"}
 
-    joint_deviation_l2: {weight: 0.1}
-    joint_vel_l2:       {weight: 1.0e-3}
-    joint_acc_l2:       {weight: 1.0e-7}
-    joint_torques_l2:   {weight: 5.0e-6}
+    # joint_deviation_l2: {weight: 0.1}
+    # joint_vel_l2:       {weight: 1.0e-3}
+    # joint_acc_l2:       {weight: 1.0e-7}
+    # joint_torques_l2:   {weight: 5.0e-6}
     action_rate_l2:     {weight: 0.005}
 
 randomization:
@@ -77,10 +78,6 @@ randomization:
       .*: [0.8, 1.1]
     damping_range:
       .*: [0.8, 1.1]
-  reset_joint_states_uniform:
-    pos_ranges:
-      .*: [-0.1, 0.1]
-    rel: true
   push_body:
     body_names: "torso_link"
     force_range: [20, 100]

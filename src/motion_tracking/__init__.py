@@ -1,1 +1,1 @@
-# motion_tracking environment package. Register tasks and assets here.
+from .command import MotionTrackingCommand
