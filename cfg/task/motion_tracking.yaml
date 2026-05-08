@@ -54,16 +54,16 @@ observation:
     projected_gravity_b: {}
 
 reward:
-  loco:
-    # linvel_exp:         {weight: 1.5}
-    # angvel_z_exp:       {weight: 1.2}
-    # body_upright:       {weight: 1.0, body_name: "torso_link"}
+  tracking:
+    root_pos_tracking:   {weight: 2.0}
+    root_quat_tracking:  {weight: 1.0}
+    joint_pos_tracking:  {weight: 3.0}
 
-    # joint_deviation_l2: {weight: 0.1}
-    # joint_vel_l2:       {weight: 1.0e-3}
-    # joint_acc_l2:       {weight: 1.0e-7}
-    # joint_torques_l2:   {weight: 5.0e-6}
-    action_rate_l2:     {weight: 0.005}
+  regularization:
+    joint_vel_l2:        {weight: 1.0e-3}
+    joint_acc_l2:        {weight: 1.0e-7}
+    joint_torques_l2:    {weight: 5.0e-6}
+    action_rate_l2:      {weight: 0.005}
 
 randomization:
   perturb_body_mass:
