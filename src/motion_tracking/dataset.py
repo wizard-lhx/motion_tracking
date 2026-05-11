@@ -17,6 +17,13 @@ class MotionBatch:
     root_pos_w: torch.Tensor
     root_quat_w: torch.Tensor
     joint_pos: torch.Tensor
+    joint_vel: torch.Tensor
+    root_lin_vel_w: torch.Tensor
+    root_ang_vel_w: torch.Tensor
+    body_pos_w: torch.Tensor
+    body_quat_w: torch.Tensor
+    body_lin_vel_w: torch.Tensor
+    body_ang_vel_w: torch.Tensor
 
 
 class MotionDataset:
@@ -33,7 +40,9 @@ class MotionDataset:
 
         self.num_frames = int(meta["shape"][0])
         self.num_joints = int(meta["joint_pos"]["shape"][1])
+        self.num_bodies = int(meta["body_pos_w"]["shape"][1])
         self.joint_names = list(motion_meta["joint_names"])
+        self.body_names = list(motion_meta["body_names"])
 
         self.starts = torch.as_tensor(motion_meta["starts"], dtype=torch.long)
         self.ends = torch.as_tensor(motion_meta["ends"], dtype=torch.long)
@@ -53,6 +62,41 @@ class MotionDataset:
             td_dir / "joint_pos.memmap",
             dtype=torch.float16,
             shape=(self.num_frames, self.num_joints),
+        )
+        self.joint_vel = MemoryMappedTensor.from_filename(
+            td_dir / "joint_vel.memmap",
+            dtype=torch.float16,
+            shape=(self.num_frames, self.num_joints),
+        )
+        self.root_lin_vel_w = MemoryMappedTensor.from_filename(
+            td_dir / "root_lin_vel_w.memmap",
+            dtype=torch.float16,
+            shape=(self.num_frames, 3),
+        )
+        self.root_ang_vel_w = MemoryMappedTensor.from_filename(
+            td_dir / "root_ang_vel_w.memmap",
+            dtype=torch.float16,
+            shape=(self.num_frames, 3),
+        )
+        self.body_pos_w = MemoryMappedTensor.from_filename(
+            td_dir / "body_pos_w.memmap",
+            dtype=torch.float16,
+            shape=(self.num_frames, self.num_bodies, 3),
+        )
+        self.body_quat_w = MemoryMappedTensor.from_filename(
+            td_dir / "body_quat_w.memmap",
+            dtype=torch.float16,
+            shape=(self.num_frames, self.num_bodies, 4),
+        )
+        self.body_lin_vel_w = MemoryMappedTensor.from_filename(
+            td_dir / "body_lin_vel_w.memmap",
+            dtype=torch.float16,
+            shape=(self.num_frames, self.num_bodies, 3),
+        )
+        self.body_ang_vel_w = MemoryMappedTensor.from_filename(
+            td_dir / "body_ang_vel_w.memmap",
+            dtype=torch.float16,
+            shape=(self.num_frames, self.num_bodies, 3),
         )
 
     @property
@@ -88,6 +132,13 @@ class MotionDataset:
             root_pos_w=self.root_pos_w[indices].to(device=self.device, dtype=torch.float32),
             root_quat_w=self.root_quat_w[indices].to(device=self.device, dtype=torch.float32),
             joint_pos=self.joint_pos[indices].to(device=self.device, dtype=torch.float32),
+            joint_vel=self.joint_vel[indices].to(device=self.device, dtype=torch.float32),
+            root_lin_vel_w=self.root_lin_vel_w[indices].to(device=self.device, dtype=torch.float32),
+            root_ang_vel_w=self.root_ang_vel_w[indices].to(device=self.device, dtype=torch.float32),
+            body_pos_w=self.body_pos_w[indices].to(device=self.device, dtype=torch.float32),
+            body_quat_w=self.body_quat_w[indices].to(device=self.device, dtype=torch.float32),
+            body_lin_vel_w=self.body_lin_vel_w[indices].to(device=self.device, dtype=torch.float32),
+            body_ang_vel_w=self.body_ang_vel_w[indices].to(device=self.device, dtype=torch.float32),
         )
 
     def _to_cpu_long(self, value, length: int | None = None) -> torch.Tensor:

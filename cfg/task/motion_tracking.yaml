@@ -11,7 +11,7 @@ robot:
 terrain: plane
 
 # common
-num_envs: 4096
+num_envs: 4
 max_episode_length: 1000
 
 sim:
@@ -55,9 +55,24 @@ observation:
 
 reward:
   tracking:
-    root_pos_tracking:   {weight: 2.0}
-    root_quat_tracking:  {weight: 1.0}
-    joint_pos_tracking:  {weight: 3.0}
+    body_pos_tracking:
+      weight: 1.0
+      body_names: &tracking_keypoints
+      - "torso_link"
+      - ".*_shoulder_pitch_link"
+      - ".*_wrist_yaw_link"
+      - ".*_hip_pitch_link"
+      - ".*_knee_link"
+      - ".*_ankle_roll_link"
+    body_rotmat_tracking:
+      weight: 1.0
+      body_names: *tracking_keypoints
+    body_lin_vel_tracking:
+      weight: 1.0
+      body_names: *tracking_keypoints
+    body_ang_vel_tracking:
+      weight: 1.0
+      body_names: *tracking_keypoints
 
   regularization:
     joint_vel_l2:        {weight: 1.0e-3}

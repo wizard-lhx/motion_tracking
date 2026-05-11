@@ -4,11 +4,7 @@ from typing import Sequence
 import torch
 
 from active_adaptation.envs.mdp.commands.base import Command
-from active_adaptation.utils.math import (
-    quat_rotate_inverse,
-    quat_mul,
-    quat_conjugate,
-)
+from active_adaptation.utils.math import matrix_from_quat
 
 from motion_tracking.dataset import DATASET_DIR, MotionDataset
 
@@ -43,6 +39,11 @@ class MotionTrackingCommand(Command):
             dtype=torch.long,
             device=self.device,
         )
+        self.body_idx_motion = torch.tensor(
+            [self.dataset.body_names.index(name) for name in self.asset.body_names],
+            dtype=torch.long,
+            device=self.device,
+        )
         self.motion_lengths = self.dataset.lengths.to(self.device)
 
         self.motion_ids = self.dataset.sample_motion_ids(self.num_envs)
@@ -63,6 +64,7 @@ class MotionTrackingCommand(Command):
 
         motion = self.dataset.get_slice(self.motion_ids[env_ids], self.t[env_ids])
         self.init_joint_pos[env_ids] = motion.joint_pos[:, 0, self.joint_idx_motion]
+        self.init_joint_vel[env_ids] = motion.joint_vel[:, 0, self.joint_idx_motion]
 
         init_root_state = self.init_root_state[env_ids]
         init_root_state[:, :3] = (
@@ -73,22 +75,25 @@ class MotionTrackingCommand(Command):
 
     def reset(self, env_ids: torch.Tensor) -> None:
         joint_pos = self.init_joint_pos[env_ids]
+        joint_vel = self.init_joint_vel[env_ids]
         self.asset.write_joint_state_to_sim(
             joint_pos,
-            torch.zeros_like(joint_pos),
+            joint_vel,
             slice(None),
             env_ids,
         )
-        self.asset.set_joint_position_target(joint_pos, env_ids=env_ids)
+        if self.env.backend == "mujoco":
+            self.asset.set_joint_position_target(joint_pos)
+        else:
+            self.asset.set_joint_position_target(joint_pos, env_ids=env_ids)
         self._cum_error[env_ids] = 0.0
 
     @property
     def command(self) -> torch.Tensor:
         return torch.cat(
             [
-                self.target_pos_b.reshape(self.num_envs, -1),
-                self.relative_quat.reshape(self.num_envs, -1),
                 self.target_joint_pos_future.reshape(self.num_envs, -1),
+                self.target_joint_vel_future.reshape(self.num_envs, -1),
             ],
             dim=-1,
         )
@@ -100,30 +105,22 @@ class MotionTrackingCommand(Command):
             offsets=self.future_steps,
         )
 
-        origins = self.env.scene.env_origins.to(self.device).reshape(
-            self.num_envs,
-            1,
-            3,
-        )
-        self.target_pos_w = self._motion.root_pos_w + origins
-        self.target_pos_b = quat_rotate_inverse(
-            self.asset.data.root_link_quat_w.unsqueeze(1),
-            self.target_pos_w - self.asset.data.root_pos_w.unsqueeze(1),
-        )
-
-        self.target_quat_w = self._motion.root_quat_w
-        self.relative_quat = quat_mul(
-            quat_conjugate(self.asset.data.root_link_quat_w).unsqueeze(1),
-            self.target_quat_w,
-        )
+        origins = self.env.scene.env_origins.to(self.device).reshape(self.num_envs, 1, 1, 3)
+        self.target_body_pos_w = self._motion.body_pos_w[:, :, self.body_idx_motion] + origins
+        self.target_body_quat_w = self._motion.body_quat_w[:, :, self.body_idx_motion]
+        self.target_body_rotmat_w = matrix_from_quat(self.target_body_quat_w)
+        self.target_body_lin_vel_w = self._motion.body_lin_vel_w[:, :, self.body_idx_motion]
+        self.target_body_ang_vel_w = self._motion.body_ang_vel_w[:, :, self.body_idx_motion]
 
         self.target_joint_pos_future = self._motion.joint_pos[:, :, self.joint_idx_motion]
+        self.target_joint_vel_future = self._motion.joint_vel[:, :, self.joint_idx_motion]
         self.target_joint_pos = self.target_joint_pos_future[:, 0]
+        self.target_joint_vel = self.target_joint_vel_future[:, 0]
 
     def update(self) -> None:
         self._update_targets()
 
-        root_error = self.target_pos_w[:, 0] - self.asset.data.root_pos_w
+        root_error = self.target_body_pos_w[:, 0, 0] - self.asset.data.body_link_pos_w[:, 0]
         self._cum_error.mul_(0.98).add_(
             root_error.norm(dim=-1, keepdim=True) * self.env.step_dt
         )
@@ -134,13 +131,3 @@ class MotionTrackingCommand(Command):
         ).clamp_min(0)
         self.t = torch.minimum(self.t + 1, max_t)
         self._update_targets()
-
-    def debug_draw(self) -> None:
-        target_pos_w = self.target_pos_w[:, 0]
-        robot_pos_w = self.asset.data.root_pos_w
-        self.env.debug_draw.point(target_pos_w, color=(1.0, 0.0, 0.0, 1.0))
-        self.env.debug_draw.vector(
-            robot_pos_w,
-            target_pos_w - robot_pos_w,
-            color=(0.0, 0.2, 1.0, 1.0),
-        )

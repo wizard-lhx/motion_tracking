@@ -9,10 +9,7 @@ import torch
 import mujoco
 from mujoco import viewer
 
-try:
-    from motion_tracking.dataset import DATASET_DIR, MotionDataset, list_datasets, load_dataset
-except ModuleNotFoundError:
-    from dataset import DATASET_DIR, MotionDataset, list_datasets, load_dataset
+from motion_tracking.dataset import DATASET_DIR, MotionDataset, list_datasets, load_dataset
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 MODEL_PATH = PROJECT_ROOT / "active-adaptation" / "active_adaptation" / "assets" / "G1" / "mjcf" / "g1.xml"
