@@ -42,7 +42,7 @@ input:
 command:
   _target_: motion_tracking.MotionTrackingCommand
   data_path: lafan_all
-  future_steps: [0, 12, 24, 36]
+  future_steps: [0]
   random_start: true
 
 observation:
@@ -101,6 +101,15 @@ randomization:
 
 termination:
   max_episode_length: {}
+  motion_finished: {}
+  body_pos_z_error:
+    threshold: 0.25
+    body_names:
+    - "pelvis"
+    - ".*_ankle_roll_link"
+    - ".*_wrist_yaw_link"
+  anchor_ori_error:
+    threshold: 0.8
   crash: 
     body_names_expr:
     - "pelvis"
