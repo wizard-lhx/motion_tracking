@@ -1,6 +1,6 @@
 import torch
 
-from active_adaptation.envs.utils import find_bodies
+from active_adaptation.envs.utils import find_bodies, find_sensor_bodies
 from active_adaptation.utils.math import (
     axis_angle_from_quat,
     quat_conjugate,
@@ -42,7 +42,7 @@ def _desired_quat(anchor_quat_w, ref_anchor_quat_w, ref_body_quat_w):
 
 
 class root_pos_tracking(Reward):
-    def __init__(self, env, weight: float, sigma: float = 0.25, track_var: bool = False):
+    def __init__(self, env, weight: float, sigma: float = 0.3 ** 2, track_var: bool = False):
         super().__init__(env, weight, track_var=track_var)
         self.asset = self.env.scene.articulations["robot"]
         self.sigma = sigma
@@ -53,7 +53,7 @@ class root_pos_tracking(Reward):
 
 
 class root_quat_tracking(Reward):
-    def __init__(self, env, weight: float, sigma: float = 0.5, track_var: bool = False):
+    def __init__(self, env, weight: float, sigma: float = 0.4 ** 2, track_var: bool = False):
         super().__init__(env, weight, track_var=track_var)
         self.asset = self.env.scene.articulations["robot"]
         self.sigma = sigma
@@ -105,6 +105,8 @@ class body_pos_tracking(Reward):
         return torch.exp(-error / self.sigma)
 
     def debug_draw(self) -> None:
+        if self.env.backend == "mjlab":
+            return
         target = _desired_pos(
             self.asset.data.body_link_pos_w[:, 0],
             self.asset.data.body_link_quat_w[:, 0],
@@ -189,3 +191,28 @@ class body_ang_vel_tracking(Reward):
         current = self.asset.data.body_ang_vel_w[:, self.body_ids]
         error = (target - current).square().sum(dim=-1).mean(dim=-1, keepdim=True)
         return torch.exp(-error / self.sigma)
+
+
+class undesired_self_contacts(Reward):
+    def __init__(
+        self,
+        env,
+        weight: float,
+        body_names: str | list[str],
+        threshold: float = 1.0,
+        track_var: bool = False,
+    ):
+        super().__init__(env, weight, track_var=track_var)
+        self.asset = self.env.scene.articulations["robot"]
+        self.contact_sensor = self.env.scene.sensors["contact_forces"]
+        self.body_ids, self.body_names = find_sensor_bodies(
+            self.asset,
+            self.contact_sensor,
+            body_names,
+        )
+        self.body_ids = torch.tensor(self.body_ids, device=self.device)
+        self.threshold = threshold
+
+    def _compute(self) -> torch.Tensor:
+        forces = self.contact_sensor.data.net_forces_w[:, self.body_ids].norm(dim=-1)
+        return -(forces > self.threshold).float().sum(dim=-1, keepdim=True)

@@ -43,7 +43,7 @@ command:
   _target_: motion_tracking.MotionTrackingCommand
   data_path: lafan_all
   future_steps: [0]
-  random_start: true
+  random_start: false
 
 observation:
   policy:
@@ -73,12 +73,25 @@ reward:
     body_ang_vel_tracking:
       weight: 1.0
       body_names: *tracking_keypoints
+    root_pos_tracking:
+      weight: 0.5
+    root_quat_tracking:
+      weight: 0.5
 
   regularization:
-    joint_vel_l2:        {weight: 1.0e-3}
-    joint_acc_l2:        {weight: 1.0e-7}
-    joint_torques_l2:    {weight: 5.0e-6}
-    action_rate_l2:      {weight: 0.005}
+    action_rate_l2:      {weight: 0.1}
+    joint_limits:        {weight: 10.0, joint_names: ".*", offset: 0.0}
+    undesired_self_contacts:
+      weight: 0.1
+      threshold: 1.0
+      body_names:
+      - "pelvis"
+      - "waist_.*_link"
+      - "torso_link"
+      - ".*_hip_.*_link"
+      - ".*_knee_link"
+      - ".*_shoulder_.*_link"
+      - ".*_elbow_link"
 
 randomization:
   perturb_body_mass:
