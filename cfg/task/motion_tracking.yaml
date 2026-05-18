@@ -49,10 +49,10 @@ command:
 observation:
   policy:
     command: {}
-    joint_pos: {}
-    joint_vel: {}
-    prev_actions: {}
-    projected_gravity_b: {}
+    joint_pos_multistep: {steps: 4, interval: 1}
+    joint_vel_multistep: {steps: 4, interval: 1}
+    prev_actions: {steps: 4}
+    gravity_multistep: {steps: 4, interval: 1}
 
 reward:
   tracking:
