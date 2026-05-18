@@ -124,9 +124,12 @@ class MotionDataset:
         frames = self._to_cpu_long(frames, length=len(motion_ids))
         offsets = self._to_cpu_long(offsets)
 
-        indices = self.starts[motion_ids, None] + frames[:, None] + offsets[None, :]
-        if torch.any(indices >= self.ends[motion_ids, None]):
-            raise IndexError("Motion slice exceeds motion length.")
+        lengths = self.lengths[motion_ids]
+        frames = torch.where(frames < 0, lengths + frames, frames)
+        starts = self.starts[motion_ids, None]
+        ends = self.ends[motion_ids, None] - 1
+        indices = starts + frames[:, None] + offsets[None, :]
+        indices = indices.clamp(min=starts, max=ends)
 
         return MotionBatch(
             root_pos_w=self.root_pos_w[indices].to(device=self.device, dtype=torch.float32),

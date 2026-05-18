@@ -43,8 +43,8 @@ command:
   _target_: motion_tracking.MotionTrackingCommand
   data_path: lafan_all
   motion_id: 57
-  future_steps: [0]
-  random_start: false
+  future_steps: [0,1,2,3]
+  random_start: true
 
 observation:
   policy:
