@@ -41,6 +41,13 @@ def _desired_quat(anchor_quat_w, ref_anchor_quat_w, ref_body_quat_w):
     )
 
 
+def _desired_anchor_pos(anchor_pos_w, ref_anchor_pos_w):
+    return torch.stack(
+        [anchor_pos_w[:, 0], anchor_pos_w[:, 1], ref_anchor_pos_w[:, 2]],
+        dim=-1,
+    )
+
+
 class root_pos_tracking(Reward):
     def __init__(self, env, weight: float, sigma: float = 0.3 ** 2, track_var: bool = False):
         super().__init__(env, weight, track_var=track_var)
@@ -106,6 +113,10 @@ class body_pos_tracking(Reward):
 
     def debug_draw(self) -> None:
         if self.env.backend == "mjlab":
+            # Use command.debug_draw() for the raw global-reference ghost.
+            # Comment this return to draw the reward-aligned ghost instead.
+            return
+            self._debug_draw_mjlab_ghost()
             return
         target = _desired_pos(
             self.asset.data.body_link_pos_w[:, 0],
@@ -119,6 +130,37 @@ class body_pos_tracking(Reward):
             color=(1.0, 0.0, 0.0, 1.0),
             size=20,
         )
+
+    def _debug_draw_mjlab_ghost(self) -> None:
+        if not self.env.sim.has_gui():
+            return
+        scene = self.env.sim.viewer.scene
+        if scene is None:
+            return
+
+        anchor_pos = self.asset.data.body_link_pos_w[:, 0]
+        anchor_quat = self.asset.data.body_link_quat_w[:, 0]
+        ref_anchor_pos = self.command_manager.target_body_pos_w[:, 0, 0]
+        ref_anchor_quat = self.command_manager.target_body_quat_w[:, 0, 0]
+        root_pos = _desired_anchor_pos(anchor_pos, ref_anchor_pos)
+        root_quat = _desired_quat(
+            anchor_quat,
+            ref_anchor_quat,
+            ref_anchor_quat.unsqueeze(1),
+        ).squeeze(1)
+
+        free_joint_q_adr = self.asset.data.indexing.free_joint_q_adr
+        joint_q_adr = self.asset.data.indexing.joint_q_adr
+        for env_id in scene.get_env_indices(self.num_envs):
+            qpos = self.env.sim.data.qpos[env_id].clone()
+            qpos[free_joint_q_adr] = torch.cat([root_pos[env_id], root_quat[env_id]])
+            qpos[joint_q_adr] = self.command_manager.target_joint_pos[env_id]
+            scene.add_ghost_mesh(
+                qpos,
+                self.env.sim.mj_model,
+                alpha=0.35,
+                label=f"tracking_target_{env_id}",
+            )
 
 
 class body_rotmat_tracking(Reward):

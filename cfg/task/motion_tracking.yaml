@@ -42,6 +42,7 @@ input:
 command:
   _target_: motion_tracking.MotionTrackingCommand
   data_path: lafan_all
+  motion_id: 57
   future_steps: [0]
   random_start: false
 

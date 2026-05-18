@@ -18,6 +18,7 @@ class MotionTrackingCommand(Command):
         data_path: str = "100style",
         future_steps: Sequence[int] = (0, 12, 24, 36),
         random_start: bool = False,
+        motion_id: int | None = None,
     ):
         super().__init__(env)
 
@@ -33,6 +34,7 @@ class MotionTrackingCommand(Command):
         )
         self.max_future_step = int(self.future_steps.max().item())
         self.random_start = random_start
+        self.motion_id = None if motion_id is None else int(motion_id)
 
         self.joint_idx_motion = torch.tensor(
             [self.dataset.joint_names.index(name) for name in self.asset.joint_names],
@@ -46,14 +48,25 @@ class MotionTrackingCommand(Command):
         )
         self.motion_lengths = self.dataset.lengths.to(self.device)
 
-        self.motion_ids = self.dataset.sample_motion_ids(self.num_envs)
+        if self.motion_id is None:
+            self.motion_ids = self.dataset.sample_motion_ids(self.num_envs)
+        else:
+            self.motion_ids = torch.full(
+                (self.num_envs,),
+                self.motion_id,
+                dtype=torch.long,
+                device=self.device,
+            )
         self.t = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self._cum_error = torch.zeros(self.num_envs, 1, device=self.device)
 
         self._update_targets()
 
     def sample_init(self, env_ids: torch.Tensor) -> torch.Tensor:
-        self.motion_ids[env_ids] = self.dataset.sample_motion_ids(len(env_ids))
+        if self.motion_id is None:
+            self.motion_ids[env_ids] = self.dataset.sample_motion_ids(len(env_ids))
+        else:
+            self.motion_ids[env_ids] = self.motion_id
         if self.random_start:
             self.t[env_ids] = self.dataset.sample_frames(
                 self.motion_ids[env_ids],
@@ -131,3 +144,32 @@ class MotionTrackingCommand(Command):
         ).clamp_min(0)
         self.t = torch.minimum(self.t + 1, max_t)
         self._update_targets()
+
+    def debug_draw(self) -> None:
+        # Uncomment this return when drawing the reward-aligned ghost instead.
+        # return
+        if self.env.backend != "mjlab" or not self.env.sim.has_gui():
+            return
+
+        scene = self.env.sim.viewer.scene
+        if scene is None:
+            return
+
+        free_joint_q_adr = self.asset.data.indexing.free_joint_q_adr
+        joint_q_adr = self.asset.data.indexing.joint_q_adr
+        for env_id in scene.get_env_indices(self.num_envs):
+            qpos = self.env.sim.data.qpos[env_id].clone()
+            qpos[free_joint_q_adr] = torch.cat(
+                [
+                    self.target_body_pos_w[env_id, 0, 0],
+                    self.target_body_quat_w[env_id, 0, 0],
+                ],
+                dim=-1,
+            )
+            qpos[joint_q_adr] = self.target_joint_pos[env_id]
+            scene.add_ghost_mesh(
+                qpos,
+                self.env.sim.mj_model,
+                alpha=0.35,
+                label=f"command_target_{env_id}",
+            )
