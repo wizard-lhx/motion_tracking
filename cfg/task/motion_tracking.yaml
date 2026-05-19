@@ -45,6 +45,7 @@ command:
   motion_id: 57
   future_steps: [0,1,2,3]
   random_start: true
+  adaptive_sampling: true
 
 observation:
   policy:
