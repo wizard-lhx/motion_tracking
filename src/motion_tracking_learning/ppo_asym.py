@@ -40,11 +40,11 @@ from typing import Union, Tuple
 from active_adaptation.learning.modules import (
     VecNorm, 
     IndependentNormal, 
-    SymmetryWrapper,
 )
 from active_adaptation.learning.ppo.common import (
     normalize,
     OBS_KEY,
+    OBS_PRIV_KEY,
     ACTION_KEY,
     REWARD_KEY,
     GAE,
@@ -52,6 +52,7 @@ from active_adaptation.learning.ppo.common import (
     make_mlp,
     Actor,
     Critic,
+    CatTensors,
 )
 from active_adaptation.learning.ppo.ppo_base import PPOBase
 from active_adaptation.learning.utils.opt import MuonAdamWWrapper
@@ -64,8 +65,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 @dataclass
 class PPOConfig:
-    _target_: str = "active_adaptation.learning.ppo.ppo.PPOPolicy"
-    name: str = "ppo"
+    _target_: str = "motion_tracking_learning.ppo_asym.PPOPolicy"
+    name: str = "ppo_asym"
     train_every: int = 32
     ppo_epochs: int = 4
     num_minibatches: int = 4
@@ -85,11 +86,11 @@ class PPOConfig:
     use_ddp: bool = True
     debug: bool = False # enable correctness checkers
 
-    in_keys: Tuple[str, ...] = (OBS_KEY,)
+    in_keys: Tuple[str, ...] = (OBS_KEY, OBS_PRIV_KEY)
 
 
 cs = ConfigStore.instance()
-cs.store("ppo", node=PPOConfig, group="algo")
+cs.store("ppo_asym", node=PPOConfig, group="algo")
 
 
 class PPOPolicy(PPOBase):
@@ -112,42 +113,42 @@ class PPOPolicy(PPOBase):
         self.gae = GAE(0.99, 0.95)
 
         fake_input = observation_spec.zero()
+        if OBS_PRIV_KEY not in observation_spec.keys(True, True):
+            raise ValueError("PPO asym requires `priv` observations for the critic.")
 
-        vecnorm = VecNorm(
+        actor_vecnorm = VecNorm(
             input_shape=observation_spec[OBS_KEY].shape[-1:],
             stats_shape=observation_spec[OBS_KEY].shape[-1:],
+            decay=1.0
+        )
+        critic_dim = observation_spec[OBS_KEY].shape[-1] + observation_spec[OBS_PRIV_KEY].shape[-1]
+        critic_vecnorm = VecNorm(
+            input_shape=(critic_dim,),
+            stats_shape=(critic_dim,),
             decay=1.0
         )
 
         self.action_dim = env.action_manager.action_dim
         
         activation = getattr(nn, self.cfg.activation)
-        self.vecnorm = Seq(Mod(vecnorm, [OBS_KEY], ["_obs_normed"])).to(self.device)
+        self.actor_vecnorm = Seq(
+            Mod(actor_vecnorm, [OBS_KEY], ["_actor_obs_normed"])
+        ).to(self.device)
+        self.critic_vecnorm = Seq(
+            CatTensors([OBS_KEY, OBS_PRIV_KEY], "_critic_input", del_keys=False, sort=False),
+            Mod(critic_vecnorm, ["_critic_input"], ["_critic_obs_normed"]),
+        ).to(self.device)
         actor_module = Seq(
-            Mod(make_mlp([256, 256, 256], activation=activation), ["_obs_normed"], ["_actor_feature"]),
+            Mod(make_mlp([256, 256, 256], activation=activation), ["_actor_obs_normed"], ["_actor_feature"]),
             Mod(Actor(self.action_dim), ["_actor_feature"], ["loc", "scale"])
         )
         self.critic = Seq(
-            Mod(make_mlp([256, 256, 256], activation=activation), ["_obs_normed"], ["_critic_feature"]),
+            Mod(make_mlp([256, 256, 256], activation=activation), ["_critic_obs_normed"], ["_critic_feature"]),
             Mod(Critic(1), ["_critic_feature"], ["state_value"])
         ).to(self.device)
 
         if self.cfg.symnet:
-            self.obs_transform = env.observation_funcs[OBS_KEY].symmetry_transform().to(self.device)
-            self.act_transform = env.action_manager.symmetry_transform().to(self.device)
-            actor_module = SymmetryWrapper(
-                actor_module,
-                Mod(self.obs_transform, ["_obs_normed"], ["_obs_normed"]),
-                Seq(
-                    Mod(self.act_transform, ["loc"], ["loc"]),
-                    Mod(self.act_transform.permutation(), ["scale"], ["scale"]),
-                )
-            )
-            self.critic = SymmetryWrapper(
-                self.critic,
-                Mod(self.obs_transform, ["_obs_normed"], ["_obs_normed"]),
-                Mod(nn.Identity(), ["state_value"], ["state_value"])
-            )
+            raise NotImplementedError("ppo_asym does not support symnet yet.")
 
         self.actor: ProbabilisticActor = ProbabilisticActor(
             module=actor_module,
@@ -157,7 +158,8 @@ class PPOPolicy(PPOBase):
             return_log_prob=True
         ).to(self.device)
 
-        self.vecnorm(fake_input)
+        self.actor_vecnorm(fake_input)
+        self.critic_vecnorm(fake_input)
         self.actor(fake_input)
         self.critic(fake_input)
 
@@ -208,9 +210,9 @@ class PPOPolicy(PPOBase):
             self._rollout_dormancy_tracker = None
 
         if critic:
-            policy = Seq(self.vecnorm, self.critic, self.actor)
+            policy = Seq(self.actor_vecnorm, self.critic_vecnorm, self.critic, self.actor)
         else:
-            policy = Seq(self.vecnorm, self.actor)
+            policy = Seq(self.actor_vecnorm, self.actor)
         if self.cfg.compile:
             policy = torch.compile(policy)
         if self.cfg.debug:
@@ -220,7 +222,7 @@ class PPOPolicy(PPOBase):
         return policy
 
     def compute_value(self, tensordict):
-        self.vecnorm(tensordict)
+        self.critic_vecnorm(tensordict)
         return self.critic(tensordict)
 
     @VecNorm.freeze()
@@ -230,8 +232,11 @@ class PPOPolicy(PPOBase):
         valid_ratio = (~tensordict["is_init"]).sum() / tensordict.numel()
 
         infos = []
-        self.vecnorm(tensordict)
-        self.vecnorm(tensordict["next"])
+        self.actor_vecnorm(tensordict)
+        self.critic_vecnorm(tensordict)
+        next_keys = tensordict["next"].keys(True, True)
+        if OBS_KEY in next_keys and OBS_PRIV_KEY in next_keys:
+            self.critic_vecnorm(tensordict["next"])
         self.compute_advantage(tensordict, self.critic, "adv", "ret")
         
         action = tensordict[ACTION_KEY]
@@ -277,12 +282,18 @@ class PPOPolicy(PPOBase):
             self._rollout_dormancy_tracker.reset()
 
         if aa.is_distributed() and aa.is_main_process():
-            loc_diffs, scale_diffs = check_vecnorm_divergence(self.vecnorm[0].module)
-            infos["vecnorm/loc_diff_max"] = max(loc_diffs)
-            infos["vecnorm/scale_diff_max"] = max(scale_diffs)
-            infos["vecnorm/loc_diff_mean"] = sum(loc_diffs) / len(loc_diffs)
-            infos["vecnorm/scale_diff_mean"] = sum(scale_diffs) / len(scale_diffs)
-            self.vecnorm[0].module.synchronize(mode="broadcast")
+            actor_loc_diffs, actor_scale_diffs = check_vecnorm_divergence(self.actor_vecnorm[0].module)
+            critic_loc_diffs, critic_scale_diffs = check_vecnorm_divergence(self.critic_vecnorm[1].module)
+            infos["vecnorm/actor_loc_diff_max"] = max(actor_loc_diffs)
+            infos["vecnorm/actor_scale_diff_max"] = max(actor_scale_diffs)
+            infos["vecnorm/actor_loc_diff_mean"] = sum(actor_loc_diffs) / len(actor_loc_diffs)
+            infos["vecnorm/actor_scale_diff_mean"] = sum(actor_scale_diffs) / len(actor_scale_diffs)
+            infos["vecnorm/critic_loc_diff_max"] = max(critic_loc_diffs)
+            infos["vecnorm/critic_scale_diff_max"] = max(critic_scale_diffs)
+            infos["vecnorm/critic_loc_diff_mean"] = sum(critic_loc_diffs) / len(critic_loc_diffs)
+            infos["vecnorm/critic_scale_diff_mean"] = sum(critic_scale_diffs) / len(critic_scale_diffs)
+            self.actor_vecnorm[0].module.synchronize(mode="broadcast")
+            self.critic_vecnorm[1].module.synchronize(mode="broadcast")
             if self.cfg.debug:
                 actor_diff = check_parameters(self.actor)
                 critic_diff = check_parameters(self.critic)
