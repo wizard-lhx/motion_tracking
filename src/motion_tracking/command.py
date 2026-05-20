@@ -5,7 +5,13 @@ import torch
 import torch.nn.functional as F
 
 from active_adaptation.envs.mdp.commands.base import Command
-from active_adaptation.utils.math import matrix_from_quat
+from active_adaptation.utils.math import (
+    axis_angle_from_quat,
+    matrix_from_quat,
+    quat_conjugate,
+    quat_mul,
+    quat_rotate_inverse,
+)
 
 from motion_tracking.dataset import DATASET_DIR, MotionDataset
 
@@ -158,11 +164,26 @@ class MotionTrackingCommand(Command):
     def command(self) -> torch.Tensor:
         return torch.cat(
             [
+                self.root_pos_error_b,
+                self.root_ori_error,
                 self.target_joint_pos_future.reshape(self.num_envs, -1),
                 self.target_joint_vel_future.reshape(self.num_envs, -1),
             ],
             dim=-1,
         )
+
+    @property
+    def root_pos_error_b(self) -> torch.Tensor:
+        error_w = self.target_body_pos_w[:, 0, 0] - self.asset.data.body_link_pos_w[:, 0]
+        return quat_rotate_inverse(self.asset.data.body_link_quat_w[:, 0], error_w)
+
+    @property
+    def root_ori_error(self) -> torch.Tensor:
+        error_quat = quat_mul(
+            quat_conjugate(self.asset.data.body_link_quat_w[:, 0]),
+            self.target_body_quat_w[:, 0, 0],
+        )
+        return axis_angle_from_quat(error_quat)
 
     def _update_targets(self) -> None:
         self._motion = self.dataset.get_slice(

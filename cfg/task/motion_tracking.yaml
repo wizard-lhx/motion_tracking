@@ -62,6 +62,7 @@ reward:
       body_names: &tracking_keypoints
       - "torso_link"
       - ".*_shoulder_pitch_link"
+      - ".*_elbow_link"
       - ".*_wrist_yaw_link"
       - ".*_hip_pitch_link"
       - ".*_knee_link"
