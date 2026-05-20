@@ -54,11 +54,8 @@ observation:
     joint_vel_multistep: {steps: 4, interval: 1}
     prev_actions: {steps: 4}
     gravity_multistep: {steps: 4, interval: 1}
-
-reward:
-  tracking:
-    body_pos_tracking:
-      weight: 1.0
+  priv:
+    body_pose_b:
       body_names: &tracking_keypoints
       - "torso_link"
       - ".*_shoulder_roll_link"
@@ -67,6 +64,13 @@ reward:
       - ".*_hip_pitch_link"
       - ".*_knee_link"
       - ".*_ankle_roll_link"
+      anchor_body_name: "pelvis"
+
+reward:
+  tracking:
+    body_pos_tracking:
+      weight: 1.0
+      body_names: *tracking_keypoints
     body_rotmat_tracking:
       weight: 1.0
       body_names: *tracking_keypoints
