@@ -1,4 +1,5 @@
 import argparse
+import threading
 import time
 from typing import Sequence
 from pathlib import Path
@@ -107,6 +108,7 @@ class MotionPlayer:
         self.speed = 1.0
         self._last_time = time.perf_counter()
         self._frame_accumulator = 0.0
+        self._lock = threading.RLock()
         self.apply_current_frame()
 
     @property
@@ -138,6 +140,8 @@ class MotionPlayer:
         )
 
     def step(self, frames: int = 1) -> None:
+        if self.motion_length <= 0:
+            raise ValueError(f"Motion {self.motion_idx} has non-positive length.")
         self.frame = (self.frame + frames) % self.motion_length
         self.apply_current_frame()
 
@@ -168,39 +172,41 @@ class MotionPlayer:
         self.speed = min(5.0, max(0.1, self.speed + delta))
 
     def update(self) -> None:
-        now = time.perf_counter()
-        elapsed = now - self._last_time
-        self._last_time = now
-        if self.paused:
-            return
+        with self._lock:
+            now = time.perf_counter()
+            elapsed = now - self._last_time
+            self._last_time = now
+            if self.paused:
+                return
 
-        self._frame_accumulator += elapsed * self.fps * self.speed
-        steps = int(self._frame_accumulator)
-        if steps:
-            self._frame_accumulator -= steps
-            self.step(steps)
+            self._frame_accumulator += elapsed * self.fps * self.speed
+            steps = int(self._frame_accumulator)
+            if steps:
+                self._frame_accumulator -= steps
+                self.step(steps)
 
     def key_callback(self, keycode: int) -> None:
-        if keycode == KEY_SPACE:
-            self.toggle_pause()
-        elif keycode == KEY_RIGHT:
-            self.paused = True
-            self.step(1)
-        elif keycode == KEY_LEFT:
-            self.paused = True
-            self.step(-1)
-        elif keycode == KEY_DOWN:
-            self.next_motion()
-        elif keycode == KEY_UP:
-            self.prev_motion()
-        elif keycode in (ord("="), ord("+")):
-            self.change_speed(0.25)
-        elif keycode == ord("-"):
-            self.change_speed(-0.25)
-        elif keycode in (ord("r"), ord("R")):
-            self.restart()
-        elif keycode == ord("0"):
-            self.speed = 1.0
+        with self._lock:
+            if keycode == KEY_SPACE:
+                self.toggle_pause()
+            elif keycode == KEY_RIGHT:
+                self.paused = True
+                self.step(1)
+            elif keycode == KEY_LEFT:
+                self.paused = True
+                self.step(-1)
+            elif keycode == KEY_DOWN:
+                self.next_motion()
+            elif keycode == KEY_UP:
+                self.prev_motion()
+            elif keycode in (ord("="), ord("+")):
+                self.change_speed(0.25)
+            elif keycode == ord("-"):
+                self.change_speed(-0.25)
+            elif keycode in (ord("r"), ord("R")):
+                self.restart()
+            elif keycode == ord("0"):
+                self.speed = 1.0
 
     def overlay_text(self) -> str:
         state = "PAUSED" if self.paused else "PLAYING"

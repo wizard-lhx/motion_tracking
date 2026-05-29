@@ -11,7 +11,7 @@ robot:
 terrain: plane
 
 # common
-num_envs: 4
+num_envs: 1
 max_episode_length: 1000
 
 sim:
@@ -41,11 +41,11 @@ input:
 
 command:
   _target_: motion_tracking.MotionTrackingCommand
-  data_path: lafan_all
-  motion_id: 57
+  data_path: walk
+  motion_id: null
   future_steps: [0,1,2,3]
   random_start: true
-  adaptive_sampling: true
+  adaptive_sampling: false
 
 observation:
   policy:
