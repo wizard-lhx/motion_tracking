@@ -45,7 +45,7 @@ command:
   motion_id: null
   future_steps: [0,1,2,3]
   random_start: true
-  adaptive_sampling: false
+  adaptive_sampling: true
 
 observation:
   policy:
@@ -122,12 +122,12 @@ randomization:
 termination:
   max_episode_length: {}
   motion_finished: {}
-  body_pos_z_error:
-    threshold: 0.25
-    body_names:
-    - "pelvis"
-    - ".*_ankle_roll_link"
-    - ".*_wrist_yaw_link"
+  # body_pos_z_error:
+  #   threshold: 0.25
+  #   body_names:
+  #   - "pelvis"
+  #   - ".*_ankle_roll_link"
+  #   - ".*_wrist_yaw_link"
   anchor_ori_error:
     threshold: 0.8
   crash: 
