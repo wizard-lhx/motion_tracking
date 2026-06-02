@@ -18,7 +18,9 @@ class teacher_command(Observation):
 
 class student_command(Observation):
     def compute(self) -> torch.Tensor:
-        return self.command_manager.student_command
+        if hasattr(self.command_manager, "student_command"):
+            return self.command_manager.student_command
+        return self.command_manager.command[:, :3]
 
     def symmetry_transform(self):
         return sym_utils.SymmetryTransform(

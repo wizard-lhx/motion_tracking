@@ -34,6 +34,7 @@ class BCDistillConfig:
     num_minibatches: int = 4
     lr: float = 5e-4
     teacher_checkpoint_path: str | None = None
+    load_teacher: bool = True
     rollout_policy: str = "teacher"
     activation: str = "Mish"
     max_grad_norm: float = 1.0
@@ -69,8 +70,9 @@ class BCDistillPolicy(PPOBase):
         self.max_grad_norm = float(self.cfg.max_grad_norm)
         self.world_size = aa.get_world_size()
         self.should_reduce_grads = aa.is_distributed() and not self.cfg.use_ddp
+        self.load_teacher = bool(self.cfg.load_teacher)
 
-        if TEACHER_KEY not in observation_spec.keys(True, True):
+        if self.load_teacher and TEACHER_KEY not in observation_spec.keys(True, True):
             raise ValueError("bc_distill requires `teacher` observations.")
         if STUDENT_KEY not in observation_spec.keys(True, True):
             raise ValueError("bc_distill requires `student` observations.")
@@ -79,32 +81,33 @@ class BCDistillPolicy(PPOBase):
         activation = getattr(nn, self.cfg.activation)
         fake_input = observation_spec.zero()
 
-        self.teacher_vecnorm = Seq(
-            Mod(
-                FrozenVecNorm(
-                    input_shape=observation_spec[TEACHER_KEY].shape[-1:],
-                    stats_shape=observation_spec[TEACHER_KEY].shape[-1:],
-                    decay=1.0,
+        if self.load_teacher:
+            self.teacher_vecnorm = Seq(
+                Mod(
+                    FrozenVecNorm(
+                        input_shape=observation_spec[TEACHER_KEY].shape[-1:],
+                        stats_shape=observation_spec[TEACHER_KEY].shape[-1:],
+                        decay=1.0,
+                    ),
+                    [TEACHER_KEY],
+                    ["_teacher_obs_normed"],
+                )
+            ).to(self.device)
+            teacher_module = Seq(
+                Mod(
+                    make_mlp([256, 256, 256], activation=activation),
+                    ["_teacher_obs_normed"],
+                    ["_teacher_feature"],
                 ),
-                [TEACHER_KEY],
-                ["_teacher_obs_normed"],
+                Mod(Actor(self.action_dim), ["_teacher_feature"], ["loc", "scale"]),
             )
-        ).to(self.device)
-        teacher_module = Seq(
-            Mod(
-                make_mlp([256, 256, 256], activation=activation),
-                ["_teacher_obs_normed"],
-                ["_teacher_feature"],
-            ),
-            Mod(Actor(self.action_dim), ["_teacher_feature"], ["loc", "scale"]),
-        )
-        self.teacher_actor = ProbabilisticActor(
-            module=teacher_module,
-            in_keys=["loc", "scale"],
-            out_keys=[ACTION_KEY],
-            distribution_class=IndependentNormal,
-            return_log_prob=True,
-        ).to(self.device)
+            self.teacher_actor = ProbabilisticActor(
+                module=teacher_module,
+                in_keys=["loc", "scale"],
+                out_keys=[ACTION_KEY],
+                distribution_class=IndependentNormal,
+                return_log_prob=True,
+            ).to(self.device)
 
         self.actor_vecnorm = Seq(
             Mod(
@@ -133,15 +136,17 @@ class BCDistillPolicy(PPOBase):
             return_log_prob=True,
         ).to(self.device)
 
-        self.teacher_vecnorm(fake_input)
-        self.teacher_actor(fake_input)
+        if self.load_teacher:
+            self.teacher_vecnorm(fake_input)
+            self.teacher_actor(fake_input)
         self.actor_vecnorm(fake_input)
         self.actor(fake_input)
 
         self._init_actor(self.actor)
-        self._load_teacher()
-        self._freeze(self.teacher_vecnorm)
-        self._freeze(self.teacher_actor)
+        if self.load_teacher:
+            self._load_teacher()
+            self._freeze(self.teacher_vecnorm)
+            self._freeze(self.teacher_actor)
 
         if aa.is_distributed():
             if self.cfg.use_ddp:
@@ -190,6 +195,8 @@ class BCDistillPolicy(PPOBase):
 
     def get_rollout_policy(self, mode: str = "train", critic: bool = False):
         if mode == "train" and self.cfg.rollout_policy == "teacher":
+            if not self.load_teacher:
+                raise ValueError("Teacher rollout requires `algo.load_teacher=true`.")
             return Seq(
                 self.teacher_vecnorm,
                 self.teacher_actor,
@@ -201,6 +208,9 @@ class BCDistillPolicy(PPOBase):
         raise NotImplementedError("bc_distill does not use a critic.")
 
     def train_op(self, tensordict: TensorDict):
+        if not self.load_teacher:
+            raise RuntimeError("BC distillation training requires `algo.load_teacher=true`.")
+
         tensordict = tensordict.exclude("stats")
         valid = ~tensordict["is_init"]
         valid_cnt = valid.sum().clamp_min(1)
