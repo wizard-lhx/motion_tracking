@@ -1,0 +1,136 @@
+# @package task
+name: motion_distill
+
+viewer:
+  resolution: [1280, 720]
+  lookat: [0., 0., 0.]
+  eye: [4.0, 4.0, 4.0]
+
+robot:
+  name: g1_waist_unlocked
+terrain: plane
+
+num_envs: 4
+max_episode_length: 1000
+
+sim:
+  step_dt: 0.02
+  isaac_physics_dt: 0.005
+  mujoco_physics_dt: 0.002
+
+input:
+  action:
+    _target_: JointPosition
+    action_scaling:
+      .*hip_pitch.*: 0.548
+      .*hip_roll.*: 0.351
+      .*hip_yaw.*: 0.548
+      .*knee.*: 0.351
+      waist_yaw_joint: 0.541
+      waist_roll_joint: 0.439
+      waist_pitch_joint: 0.439
+      .*ankle.*: 0.439
+      .*shoulder.*: 0.173
+      .*elbow_joint: 0.173
+    max_delay: 2
+    alpha_range: [0.8, 1.0]
+
+command:
+  _target_: motion_tracking.MotionTrackingCommand
+  data_path: walk
+  motion_id: null
+  future_steps: [0, 1, 2, 3]
+  random_start: true
+  adaptive_sampling: true
+
+observation:
+  teacher:
+    teacher_command: {}
+    joint_pos_multistep: {steps: 4, interval: 1}
+    joint_vel_multistep: {steps: 4, interval: 1}
+    prev_actions: {steps: 4}
+    gravity_multistep: {steps: 4, interval: 1}
+  student:
+    student_command: {}
+    joint_pos_multistep: {steps: 4, interval: 1}
+    joint_vel_multistep: {steps: 4, interval: 1}
+    prev_actions: {steps: 4}
+    gravity_multistep: {steps: 4, interval: 1}
+  priv:
+    body_pose_b:
+      body_names: &tracking_keypoints
+      - "torso_link"
+      - ".*_shoulder_roll_link"
+      - ".*_elbow_link"
+      - ".*_wrist_yaw_link"
+      - ".*_hip_pitch_link"
+      - ".*_knee_link"
+      - ".*_ankle_roll_link"
+      anchor_body_name: "pelvis"
+
+reward:
+  tracking:
+    body_pos_tracking:
+      weight: 1.0
+      body_names: *tracking_keypoints
+    body_rotmat_tracking:
+      weight: 1.0
+      body_names: *tracking_keypoints
+    body_lin_vel_tracking:
+      weight: 1.0
+      body_names: *tracking_keypoints
+    body_ang_vel_tracking:
+      weight: 1.0
+      body_names: *tracking_keypoints
+    root_pos_tracking:
+      weight: 0.5
+    root_quat_tracking:
+      weight: 0.5
+
+  regularization:
+    action_rate_l2:      {weight: 0.1}
+    joint_limits:        {weight: 10.0, joint_names: ".*", offset: 0.0}
+    undesired_self_contacts:
+      weight: 0.1
+      threshold: 1.0
+      body_names:
+      - "pelvis"
+      - "waist_.*_link"
+      - "torso_link"
+      - ".*_hip_.*_link"
+      - ".*_knee_link"
+      - ".*_shoulder_.*_link"
+      - ".*_elbow_link"
+
+randomization:
+  perturb_body_mass:
+    .*: [0.8, 1.2]
+  perturb_body_materials:
+    body_names: ".*ankle_roll_link"
+    static_friction_range: [0.6, 2.0]
+    dynamic_friction_range: [0.6, 2.0]
+    restitution_range: [0.0, 0.2]
+  actuator_pd_gains:
+    stiffness_range:
+      .*: [0.8, 1.1]
+    damping_range:
+      .*: [0.8, 1.1]
+  push_body:
+    body_names: "torso_link"
+    force_range: [20, 100]
+    min_interval: 100
+    decay: 0.9
+
+termination:
+  max_episode_length: {}
+  motion_finished: {}
+  anchor_ori_error:
+    threshold: 0.8
+  crash:
+    body_names_expr:
+    - "pelvis"
+    - "torso_link"
+    - ".*_hip_.*_link"
+    - ".*shoulder_.*_link"
+    - ".*(wrist|elbow).*"
+  fall_over: {xy_thres: 0.9}

@@ -11,6 +11,7 @@ from active_adaptation.utils.math import (
     quat_conjugate,
     quat_mul,
     quat_rotate_inverse,
+    yaw_quat,
 )
 
 from motion_tracking.dataset import DATASET_DIR, MotionDataset
@@ -162,12 +163,26 @@ class MotionTrackingCommand(Command):
 
     @property
     def command(self) -> torch.Tensor:
+        return self.teacher_command
+
+    @property
+    def teacher_command(self) -> torch.Tensor:
         return torch.cat(
             [
                 self.root_pos_error_b,
                 self.root_ori_error,
                 self.target_joint_pos_future.reshape(self.num_envs, -1),
                 self.target_joint_vel_future.reshape(self.num_envs, -1),
+            ],
+            dim=-1,
+        )
+
+    @property
+    def student_command(self) -> torch.Tensor:
+        return torch.cat(
+            [
+                self.cmd_linvel_b[:, :2],
+                self.cmd_yawvel_b,
             ],
             dim=-1,
         )
@@ -203,6 +218,17 @@ class MotionTrackingCommand(Command):
         self.target_joint_vel_future = self._motion.joint_vel[:, :, self.joint_idx_motion]
         self.target_joint_pos = self.target_joint_pos_future[:, 0]
         self.target_joint_vel = self.target_joint_vel_future[:, 0]
+
+        root_yaw_quat = yaw_quat(self._motion.root_quat_w[:, 0])
+        self.cmd_linvel_b = quat_rotate_inverse(
+            root_yaw_quat,
+            self._motion.root_lin_vel_w[:, 0],
+        )
+        root_ang_vel_b = quat_rotate_inverse(
+            root_yaw_quat,
+            self._motion.root_ang_vel_w[:, 0],
+        )
+        self.cmd_yawvel_b = root_ang_vel_b[:, 2:3]
 
     def update(self) -> None:
         self._update_targets()

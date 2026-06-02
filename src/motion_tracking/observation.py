@@ -2,12 +2,29 @@ import torch
 
 from active_adaptation.envs.mdp.observations.base import Observation
 from active_adaptation.envs.utils import find_bodies
+import active_adaptation.utils.symmetry as sym_utils
 from active_adaptation.utils.math import (
     matrix_from_quat,
     quat_conjugate,
     quat_mul,
     quat_rotate_inverse,
 )
+
+
+class teacher_command(Observation):
+    def compute(self) -> torch.Tensor:
+        return self.command_manager.teacher_command
+
+
+class student_command(Observation):
+    def compute(self) -> torch.Tensor:
+        return self.command_manager.student_command
+
+    def symmetry_transform(self):
+        return sym_utils.SymmetryTransform(
+            perm=torch.arange(3, device=self.device),
+            signs=torch.tensor([1.0, -1.0, -1.0], device=self.device),
+        )
 
 
 class body_pose_b(Observation):
