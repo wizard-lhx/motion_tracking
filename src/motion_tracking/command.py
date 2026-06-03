@@ -224,6 +224,8 @@ class MotionTrackingCommand(Command):
             root_yaw_quat,
             self._motion.root_lin_vel_w[:, 0],
         )
+        self.cmd_linvel_w = self._motion.root_lin_vel_w[:, 0]
+        self.command_speed = self.cmd_linvel_b.norm(dim=-1, keepdim=True)
         root_ang_vel_b = quat_rotate_inverse(
             root_yaw_quat,
             self._motion.root_ang_vel_w[:, 0],

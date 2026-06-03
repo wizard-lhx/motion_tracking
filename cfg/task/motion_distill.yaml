@@ -69,38 +69,14 @@ observation:
       anchor_body_name: "pelvis"
 
 reward:
-  tracking:
-    body_pos_tracking:
-      weight: 1.0
-      body_names: *tracking_keypoints
-    body_rotmat_tracking:
-      weight: 1.0
-      body_names: *tracking_keypoints
-    body_lin_vel_tracking:
-      weight: 1.0
-      body_names: *tracking_keypoints
-    body_ang_vel_tracking:
-      weight: 1.0
-      body_names: *tracking_keypoints
-    root_pos_tracking:
-      weight: 0.5
-    root_quat_tracking:
-      weight: 0.5
+  task:
+    linvel_exp:   {weight: 1.0, dim: 2}
+    angvel_z_exp: {weight: 1.0}
+    body_upright: {weight: 0.5, body_name: "torso_link"}
 
   regularization:
-    action_rate_l2:      {weight: 0.1}
-    joint_limits:        {weight: 10.0, joint_names: ".*", offset: 0.0}
-    undesired_self_contacts:
-      weight: 0.1
-      threshold: 1.0
-      body_names:
-      - "pelvis"
-      - "waist_.*_link"
-      - "torso_link"
-      - ".*_hip_.*_link"
-      - ".*_knee_link"
-      - ".*_shoulder_.*_link"
-      - ".*_elbow_link"
+    action_rate_l2: {weight: 0.01}
+    joint_limits:   {weight: 1.0, joint_names: ".*", offset: 0.0}
 
 randomization:
   perturb_body_mass:

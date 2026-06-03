@@ -1,3 +1,3 @@
 # Learning scripts and entry points.
-from . import bc_distill
+from . import ppo_dagger
 from . import ppo_asym
