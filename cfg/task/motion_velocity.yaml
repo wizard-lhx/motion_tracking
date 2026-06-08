@@ -37,14 +37,14 @@ input:
 
 command:
   _target_: Twist
-  linvel_x_range: [-0.4, 0.4]
-  linvel_y_range: [-0.4, 0.4]
+  linvel_x_range: [-0.6, 1.0]
+  linvel_y_range: [-0.5, 0.5]
   angvel_range: [-1.0, 1.0]
-  yaw_stiffness_range: [0.5, 1.0]
-  use_stiffness_ratio: 0.9
-  stand_prob: 1.0
+  yaw_stiffness_range: [0.0, 0.0]
+  use_stiffness_ratio: 0.0
+  stand_prob: 0.0
   curriculum: false
-  teleop: false
+  teleop: true
 
 observation:
   student:
