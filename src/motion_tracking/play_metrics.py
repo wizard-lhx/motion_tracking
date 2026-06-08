@@ -11,8 +11,6 @@ from torchrl.envs.utils import ExplorationType, set_exploration_type
 import active_adaptation as aa
 from active_adaptation.utils.wandb import parse_checkpoint
 
-from motion_tracking.metrics import PlayTrackingMetrics
-
 
 CONFIG_PATH = Path(aa.__file__).resolve().parents[1] / "cfg"
 
@@ -36,6 +34,7 @@ def main(cfg: DictConfig):
     OmegaConf.set_struct(cfg, False)
 
     from active_adaptation.helpers import make_env_policy
+    from motion_tracking.metrics import PlayTrackingMetrics
 
     checkpoint = parse_checkpoint(cfg.checkpoint_path)
     env, policy = make_env_policy(cfg, checkpoint)
