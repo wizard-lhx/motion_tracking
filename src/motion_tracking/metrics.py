@@ -88,8 +88,18 @@ class PlayTrackingMetrics:
         metrics = self._compute_step_metrics()
         for key in _METRIC_SUM_KEYS:
             self._sum[key].add_(metrics[key])
-        self._global_body_pos_max.maximum_(metrics["global_body_pos_error_max_m"])
-        self._anchor_body_pos_max.maximum_(metrics["anchor_body_pos_error_max_m"])
+        self._global_body_pos_max.copy_(
+            torch.maximum(
+                self._global_body_pos_max,
+                metrics["global_body_pos_error_max_m"],
+            )
+        )
+        self._anchor_body_pos_max.copy_(
+            torch.maximum(
+                self._anchor_body_pos_max,
+                metrics["anchor_body_pos_error_max_m"],
+            )
+        )
         self._steps.add_(1)
 
         if action is not None:
