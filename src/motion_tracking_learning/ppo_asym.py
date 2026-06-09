@@ -75,7 +75,10 @@ class PPOConfig:
     clip_param: float = 0.2
     entropy_coef: float = 0.002
 
-    activation: str = "Mish"
+    actor_hidden_dims: Tuple[int, ...] = (512, 256, 128)
+    critic_hidden_dims: Tuple[int, ...] = (512, 256, 128)
+    activation: str = "ELU"
+    empirical_normalization: bool = True
     muon: bool = False # use Muon optimizer
     
     # symmetry options
@@ -109,6 +112,10 @@ class PPOPolicy(PPOBase):
         super().__init__()
         self.cfg = PPOConfig(**cfg)
         self.device = device
+        if not self.cfg.empirical_normalization:
+            raise ValueError(
+                "ppo_asym currently requires empirical_normalization=True"
+            )
 
         self.max_grad_norm = 1.0
         self.critic_loss_fn = nn.MSELoss(reduction="none")
@@ -156,11 +163,27 @@ class PPOPolicy(PPOBase):
             Mod(critic_vecnorm, [critic_input_key], ["_critic_obs_normed"]),
         ).to(self.device)
         actor_module = Seq(
-            Mod(make_mlp([256, 256, 256], activation=activation), ["_actor_obs_normed"], ["_actor_feature"]),
+            Mod(
+                make_mlp(
+                    self.cfg.actor_hidden_dims,
+                    activation=activation,
+                    norm=None,
+                ),
+                ["_actor_obs_normed"],
+                ["_actor_feature"],
+            ),
             Mod(Actor(self.action_dim), ["_actor_feature"], ["loc", "scale"])
         )
         self.critic = Seq(
-            Mod(make_mlp([256, 256, 256], activation=activation), ["_critic_obs_normed"], ["_critic_feature"]),
+            Mod(
+                make_mlp(
+                    self.cfg.critic_hidden_dims,
+                    activation=activation,
+                    norm=None,
+                ),
+                ["_critic_obs_normed"],
+                ["_critic_feature"],
+            ),
             Mod(Critic(1), ["_critic_feature"], ["state_value"])
         ).to(self.device)
 
