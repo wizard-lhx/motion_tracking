@@ -338,7 +338,7 @@ class MotionTrackingCommand(Command):
         ).clamp_min(0)
         next_t = self.t + 1
         finished_env_ids = torch.nonzero(
-            next_t >= max_t,
+            next_t > max_t,
             as_tuple=False,
         ).flatten()
         self.t = torch.minimum(next_t, max_t)
