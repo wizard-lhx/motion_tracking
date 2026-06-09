@@ -46,6 +46,7 @@ command:
   future_steps: [0]
   anchor_body_name: torso_link
   single_step_command: true
+  resample_motion_on_end: true
   random_start: true
   adaptive_sampling: true
   adaptive_bin_seconds: 1.0
@@ -180,6 +181,7 @@ termination:
   anchor_pos_z_error:
     threshold: 0.25
   anchor_ori_error:
+    _target_: anchor_projected_gravity_error
     threshold: 0.8
   body_pos_z_error:
     threshold: 0.25

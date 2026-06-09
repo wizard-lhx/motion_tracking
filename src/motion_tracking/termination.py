@@ -2,7 +2,12 @@ import torch
 
 from active_adaptation.envs.mdp.terminations.base import Termination
 from active_adaptation.envs.utils import find_bodies
-from active_adaptation.utils.math import quat_rotate_inverse
+from active_adaptation.utils.math import (
+    axis_angle_from_quat,
+    quat_conjugate,
+    quat_mul,
+    quat_rotate_inverse,
+)
 
 
 class body_pos_z_error(Termination):
@@ -41,6 +46,24 @@ class anchor_ori_error(Termination):
     def __init__(self, env, threshold: float = 0.8):
         super().__init__(env)
         self.asset = self.env.scene.articulations["robot"]
+        self.threshold = threshold
+
+    def compute(self, termination: torch.Tensor) -> torch.Tensor:
+        target = quat_mul(
+            self.command_manager.anchor_yaw_delta_quat,
+            self.command_manager.motion_anchor_quat_w,
+        )
+        error_quat = quat_mul(
+            target,
+            quat_conjugate(self.command_manager.robot_anchor_quat_w),
+        )
+        error = axis_angle_from_quat(error_quat).norm(dim=-1, keepdim=True)
+        return error > self.threshold
+
+
+class anchor_projected_gravity_error(Termination):
+    def __init__(self, env, threshold: float = 0.8):
+        super().__init__(env)
         self.threshold = threshold
 
     def compute(self, termination: torch.Tensor) -> torch.Tensor:

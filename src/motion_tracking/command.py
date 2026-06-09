@@ -29,6 +29,7 @@ class MotionTrackingCommand(Command):
         future_steps: Sequence[int] = (0, 12, 24, 36),
         anchor_body_name: str = "pelvis",
         single_step_command: bool = False,
+        resample_motion_on_end: bool = False,
         random_start: bool = False,
         motion_id: int | None = None,
         adaptive_sampling: bool = False,
@@ -56,6 +57,7 @@ class MotionTrackingCommand(Command):
         self.max_future_step = int(self.future_steps.max().item())
         self.anchor_body_name = anchor_body_name
         self.single_step_command = bool(single_step_command)
+        self.resample_motion_on_end = bool(resample_motion_on_end)
         self.random_start = random_start
         self.motion_id = None if motion_id is None else int(motion_id)
         self.reset_pose_range = reset_pose_range or {}
@@ -352,18 +354,19 @@ class MotionTrackingCommand(Command):
             self.motion_lengths[self.motion_ids] - self.max_future_step - 1
         ).clamp_min(0)
         next_t = self.t + 1
-        finished_env_ids = torch.nonzero(
-            next_t > max_t,
-            as_tuple=False,
-        ).flatten()
         self.t = torch.minimum(next_t, max_t)
-        if finished_env_ids.numel() > 0:
-            root_state = self.sample_init(finished_env_ids)
-            self.asset.write_root_state_to_sim(
-                root_state,
-                env_ids=finished_env_ids,
-            )
-            self.reset(finished_env_ids)
+        if self.resample_motion_on_end:
+            finished_env_ids = torch.nonzero(
+                next_t > max_t,
+                as_tuple=False,
+            ).flatten()
+            if finished_env_ids.numel() > 0:
+                root_state = self.sample_init(finished_env_ids)
+                self.asset.write_root_state_to_sim(
+                    root_state,
+                    env_ids=finished_env_ids,
+                )
+                self.reset(finished_env_ids)
         self._update_targets()
 
     def _sample_adaptive_frames(self, motion_ids: torch.Tensor) -> torch.Tensor:
