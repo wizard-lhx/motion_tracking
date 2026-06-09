@@ -11,6 +11,12 @@ from active_adaptation.utils.math import (
 )
 
 
+def _uniform_noise(value: torch.Tensor, amplitude: float) -> torch.Tensor:
+    if amplitude <= 0.0:
+        return value
+    return value + torch.empty_like(value).uniform_(-amplitude, amplitude)
+
+
 class teacher_command(Observation):
     def compute(self) -> torch.Tensor:
         return self.command_manager.teacher_command
@@ -27,6 +33,98 @@ class student_command(Observation):
             perm=torch.arange(3, device=self.device),
             signs=torch.tensor([1.0, -1.0, -1.0], device=self.device),
         )
+
+
+class motion_anchor_pos_b(Observation):
+    def __init__(self, env, noise_amplitude: float = 0.0):
+        super().__init__(env)
+        self.noise_amplitude = float(noise_amplitude)
+
+    def compute(self) -> torch.Tensor:
+        error_w = (
+            self.command_manager.motion_anchor_pos_w
+            - self.command_manager.robot_anchor_pos_w
+        )
+        error_b = quat_rotate_inverse(
+            self.command_manager.robot_anchor_quat_w,
+            error_w,
+        )
+        return _uniform_noise(error_b, self.noise_amplitude)
+
+
+class motion_anchor_ori_b(Observation):
+    def __init__(self, env, noise_amplitude: float = 0.0):
+        super().__init__(env)
+        self.noise_amplitude = float(noise_amplitude)
+
+    def compute(self) -> torch.Tensor:
+        error_quat = quat_mul(
+            quat_conjugate(self.command_manager.robot_anchor_quat_w),
+            self.command_manager.motion_anchor_quat_w,
+        )
+        rot6d = matrix_from_quat(error_quat)[..., :2].reshape(self.num_envs, 6)
+        return _uniform_noise(rot6d, self.noise_amplitude)
+
+
+class root_lin_vel_b(Observation):
+    def __init__(self, env, noise_amplitude: float = 0.0):
+        super().__init__(env)
+        self.asset = self.env.scene.articulations["robot"]
+        self.noise_amplitude = float(noise_amplitude)
+
+    def compute(self) -> torch.Tensor:
+        value = quat_rotate_inverse(
+            self.asset.data.root_link_quat_w,
+            self.asset.data.root_com_lin_vel_w,
+        )
+        return _uniform_noise(value, self.noise_amplitude)
+
+
+class root_ang_vel_b(Observation):
+    def __init__(self, env, noise_amplitude: float = 0.0):
+        super().__init__(env)
+        self.asset = self.env.scene.articulations["robot"]
+        self.noise_amplitude = float(noise_amplitude)
+
+    def compute(self) -> torch.Tensor:
+        value = quat_rotate_inverse(
+            self.asset.data.root_link_quat_w,
+            self.asset.data.root_com_ang_vel_w,
+        )
+        return _uniform_noise(value, self.noise_amplitude)
+
+
+class joint_pos_bm(Observation):
+    def __init__(self, env, noise_amplitude: float = 0.0):
+        super().__init__(env)
+        self.asset = self.env.scene.articulations["robot"]
+        self.noise_amplitude = float(noise_amplitude)
+
+    def compute(self) -> torch.Tensor:
+        value = self.asset.data.joint_pos - self.asset.data.default_joint_pos
+        return _uniform_noise(value, self.noise_amplitude)
+
+
+class joint_vel_bm(Observation):
+    def __init__(self, env, noise_amplitude: float = 0.0):
+        super().__init__(env)
+        self.asset = self.env.scene.articulations["robot"]
+        self.noise_amplitude = float(noise_amplitude)
+
+    def compute(self) -> torch.Tensor:
+        return _uniform_noise(
+            self.asset.data.joint_vel,
+            self.noise_amplitude,
+        )
+
+
+class last_action_bm(Observation):
+    def __init__(self, env):
+        super().__init__(env)
+        self.action_manager = self.env.action_manager
+
+    def compute(self) -> torch.Tensor:
+        return self.action_manager.action_buf[:, 0]
 
 
 class body_pose_b(Observation):

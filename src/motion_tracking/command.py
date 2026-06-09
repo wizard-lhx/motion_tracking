@@ -25,6 +25,7 @@ class MotionTrackingCommand(Command):
         env,
         data_path: str = "100style",
         future_steps: Sequence[int] = (0, 12, 24, 36),
+        anchor_body_name: str = "pelvis",
         random_start: bool = False,
         motion_id: int | None = None,
         adaptive_sampling: bool = False,
@@ -47,6 +48,7 @@ class MotionTrackingCommand(Command):
             device=self.device,
         )
         self.max_future_step = int(self.future_steps.max().item())
+        self.anchor_body_name = anchor_body_name
         self.random_start = random_start
         self.motion_id = None if motion_id is None else int(motion_id)
         self.adaptive_sampling = adaptive_sampling
@@ -70,6 +72,7 @@ class MotionTrackingCommand(Command):
             dtype=torch.long,
             device=self.device,
         )
+        self.anchor_body_id = self.asset.body_names.index(self.anchor_body_name)
         self.motion_lengths = self.dataset.lengths.to(self.device)
 
         if self.motion_id is None:
@@ -167,15 +170,23 @@ class MotionTrackingCommand(Command):
 
     @property
     def teacher_command(self) -> torch.Tensor:
-        return torch.cat(
-            [
-                self.root_pos_error_b,
-                self.root_ori_error,
-                self.target_joint_pos_future.reshape(self.num_envs, -1),
-                self.target_joint_vel_future.reshape(self.num_envs, -1),
-            ],
-            dim=-1,
-        )
+        return torch.cat([self.target_joint_pos, self.target_joint_vel], dim=-1)
+
+    @property
+    def robot_anchor_pos_w(self) -> torch.Tensor:
+        return self.asset.data.body_link_pos_w[:, self.anchor_body_id]
+
+    @property
+    def robot_anchor_quat_w(self) -> torch.Tensor:
+        return self.asset.data.body_link_quat_w[:, self.anchor_body_id]
+
+    @property
+    def motion_anchor_pos_w(self) -> torch.Tensor:
+        return self.target_body_pos_w[:, 0, self.anchor_body_id]
+
+    @property
+    def motion_anchor_quat_w(self) -> torch.Tensor:
+        return self.target_body_quat_w[:, 0, self.anchor_body_id]
 
     @property
     def student_command(self) -> torch.Tensor:

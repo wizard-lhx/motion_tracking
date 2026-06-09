@@ -43,17 +43,20 @@ command:
   _target_: motion_tracking.MotionTrackingCommand
   data_path: walk
   motion_id: null
-  future_steps: [0,1,2,3]
+  future_steps: [0]
   random_start: true
   adaptive_sampling: true
 
 observation:
   policy:
     command: {}
-    joint_pos_multistep: {steps: 4, interval: 1}
-    joint_vel_multistep: {steps: 4, interval: 1}
-    prev_actions: {steps: 4}
-    gravity_multistep: {steps: 4, interval: 1}
+    motion_anchor_pos_b: {noise_amplitude: 0.25}
+    motion_anchor_ori_b: {noise_amplitude: 0.05}
+    root_lin_vel_b: {noise_amplitude: 0.5}
+    root_ang_vel_b: {noise_amplitude: 0.2}
+    joint_pos_bm: {noise_amplitude: 0.01}
+    joint_vel_bm: {noise_amplitude: 0.5}
+    last_action_bm: {}
   priv:
     body_pose_b:
       body_names: &tracking_keypoints
