@@ -136,7 +136,10 @@ class body_pose_b(Observation):
     ):
         super().__init__(env)
         self.asset = self.env.scene.articulations["robot"]
-        self.body_ids, self.body_names = find_bodies(self.asset, body_names)
+        self.body_ids, self.body_names = self.asset.find_bodies(
+            body_names,
+            preserve_order=True,
+        )
         anchor_ids, _ = find_bodies(self.asset, anchor_body_name)
         self.body_ids = torch.tensor(self.body_ids, device=self.device)
         self.anchor_id = anchor_ids[0]
