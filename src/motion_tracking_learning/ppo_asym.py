@@ -81,6 +81,7 @@ class PPOConfig:
     actor_hidden_dims: Tuple[int, ...] = (256, 256, 256)
     critic_hidden_dims: Tuple[int, ...] = (256, 256, 256)
     activation: str = "Mish"
+    mlp_norm: Union[str, None] = "before"
     empirical_normalization: bool = True
     
     # symmetry options
@@ -111,6 +112,7 @@ class BeyondMimicPPOConfig(PPOConfig):
     actor_hidden_dims: Tuple[int, ...] = (512, 256, 128)
     critic_hidden_dims: Tuple[int, ...] = (512, 256, 128)
     activation: str = "ELU"
+    mlp_norm: Union[str, None] = None
     empirical_normalization: bool = True
     clamp_reward: bool = False
     critic_concat_policy: bool = False
@@ -194,7 +196,7 @@ class PPOPolicy(PPOBase):
                 make_mlp(
                     self.cfg.actor_hidden_dims,
                     activation=activation,
-                    norm=None,
+                    norm=self.cfg.mlp_norm,
                 ),
                 ["_actor_obs_normed"],
                 ["_actor_feature"],
@@ -206,7 +208,7 @@ class PPOPolicy(PPOBase):
                 make_mlp(
                     self.cfg.critic_hidden_dims,
                     activation=activation,
-                    norm=None,
+                    norm=self.cfg.mlp_norm,
                 ),
                 ["_critic_obs_normed"],
                 ["_critic_feature"],
