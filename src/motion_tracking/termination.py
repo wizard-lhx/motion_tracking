@@ -48,13 +48,7 @@ class body_pos_z_error(Termination):
         self.threshold = threshold
 
     def compute(self, termination: torch.Tensor) -> torch.Tensor:
-        target = _desired_pos(
-            self.asset.data.body_link_pos_w[:, 0],
-            self.asset.data.body_link_quat_w[:, 0],
-            self.command_manager.target_body_pos_w[:, 0, 0],
-            self.command_manager.target_body_quat_w[:, 0, 0],
-            self.command_manager.target_body_pos_w[:, 0, self.body_ids],
-        )
+        target = self.command_manager.anchored_body_pos_w[:, self.body_ids]
         error_z = target[..., 2] - self.asset.data.body_link_pos_w[:, self.body_ids, 2]
         return (error_z.abs() > self.threshold).any(dim=-1, keepdim=True)
 
@@ -66,12 +60,8 @@ class anchor_ori_error(Termination):
         self.threshold = threshold
 
     def compute(self, termination: torch.Tensor) -> torch.Tensor:
-        target = _desired_quat(
-            self.asset.data.body_link_quat_w[:, 0],
-            self.command_manager.target_body_quat_w[:, 0, 0],
-            self.command_manager.target_body_quat_w[:, 0, 0].unsqueeze(1),
-        )[:, 0]
-        current = self.asset.data.body_link_quat_w[:, 0]
+        target = self.command_manager.motion_anchor_quat_w
+        current = self.command_manager.robot_anchor_quat_w
         error_quat = quat_mul(target, quat_conjugate(current))
         error = axis_angle_from_quat(error_quat).norm(dim=-1, keepdim=True)
         return error > self.threshold

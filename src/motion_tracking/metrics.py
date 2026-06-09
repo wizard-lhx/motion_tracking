@@ -250,25 +250,15 @@ class PlayTrackingMetrics:
 
         global_body_pos = (target_body_pos - current_body_pos).norm(dim=-1)
 
-        anchor_pos = self.asset.data.body_link_pos_w[:, 0]
-        anchor_quat = self.asset.data.body_link_quat_w[:, 0]
-        ref_anchor_pos = self.command.target_body_pos_w[:, 0, 0]
-        ref_anchor_quat = self.command.target_body_quat_w[:, 0, 0]
+        anchor_pos = self.command.robot_anchor_pos_w
+        anchor_quat = self.command.robot_anchor_quat_w
+        ref_anchor_pos = self.command.motion_anchor_pos_w
+        ref_anchor_quat = self.command.motion_anchor_quat_w
 
-        anchor_body_pos_target = _desired_pos(
-            anchor_pos,
-            anchor_quat,
-            ref_anchor_pos,
-            ref_anchor_quat,
-            target_body_pos,
-        )
+        anchor_body_pos_target = self.command.anchored_body_pos_w[:, self.body_ids]
         anchor_body_pos = (anchor_body_pos_target - current_body_pos).norm(dim=-1)
 
-        anchor_body_quat_target = _desired_quat(
-            anchor_quat,
-            ref_anchor_quat,
-            target_body_quat,
-        )
+        anchor_body_quat_target = self.command.anchored_body_quat_w[:, self.body_ids]
         body_ori = axis_angle_from_quat(
             quat_mul(anchor_body_quat_target, quat_conjugate(current_body_quat))
         ).norm(dim=-1)

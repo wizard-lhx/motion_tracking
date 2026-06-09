@@ -44,6 +44,7 @@ command:
   data_path: walk
   motion_id: null
   future_steps: [0]
+  anchor_body_name: torso_link
   random_start: true
   adaptive_sampling: true
 

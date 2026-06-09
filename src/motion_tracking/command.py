@@ -10,6 +10,7 @@ from active_adaptation.utils.math import (
     matrix_from_quat,
     quat_conjugate,
     quat_mul,
+    quat_rotate,
     quat_rotate_inverse,
     yaw_quat,
 )
@@ -189,6 +190,38 @@ class MotionTrackingCommand(Command):
         return self.target_body_quat_w[:, 0, self.anchor_body_id]
 
     @property
+    def anchor_yaw_delta_quat(self) -> torch.Tensor:
+        return yaw_quat(
+            quat_mul(
+                self.robot_anchor_quat_w,
+                quat_conjugate(self.motion_anchor_quat_w),
+            )
+        )
+
+    @property
+    def anchored_body_pos_w(self) -> torch.Tensor:
+        anchor_pos = torch.stack(
+            [
+                self.robot_anchor_pos_w[:, 0],
+                self.robot_anchor_pos_w[:, 1],
+                self.motion_anchor_pos_w[:, 2],
+            ],
+            dim=-1,
+        )
+        return anchor_pos.unsqueeze(1) + quat_rotate(
+            self.anchor_yaw_delta_quat.unsqueeze(1),
+            self.target_body_pos_w[:, 0]
+            - self.motion_anchor_pos_w.unsqueeze(1),
+        )
+
+    @property
+    def anchored_body_quat_w(self) -> torch.Tensor:
+        return quat_mul(
+            self.anchor_yaw_delta_quat.unsqueeze(1),
+            self.target_body_quat_w[:, 0],
+        )
+
+    @property
     def student_command(self) -> torch.Tensor:
         return torch.cat(
             [
@@ -200,14 +233,14 @@ class MotionTrackingCommand(Command):
 
     @property
     def root_pos_error_b(self) -> torch.Tensor:
-        error_w = self.target_body_pos_w[:, 0, 0] - self.asset.data.body_link_pos_w[:, 0]
-        return quat_rotate_inverse(self.asset.data.body_link_quat_w[:, 0], error_w)
+        error_w = self.motion_anchor_pos_w - self.robot_anchor_pos_w
+        return quat_rotate_inverse(self.robot_anchor_quat_w, error_w)
 
     @property
     def root_ori_error(self) -> torch.Tensor:
         error_quat = quat_mul(
-            quat_conjugate(self.asset.data.body_link_quat_w[:, 0]),
-            self.target_body_quat_w[:, 0, 0],
+            quat_conjugate(self.robot_anchor_quat_w),
+            self.motion_anchor_quat_w,
         )
         return axis_angle_from_quat(error_quat)
 
@@ -246,7 +279,7 @@ class MotionTrackingCommand(Command):
     def update(self) -> None:
         self._update_targets()
 
-        root_error = self.target_body_pos_w[:, 0, 0] - self.asset.data.body_link_pos_w[:, 0]
+        root_error = self.motion_anchor_pos_w - self.robot_anchor_pos_w
         self._cum_error.mul_(0.98).add_(
             root_error.norm(dim=-1, keepdim=True) * self.env.step_dt
         )
@@ -341,8 +374,8 @@ class MotionTrackingCommand(Command):
             qpos = self.env.sim.data.qpos[env_id].clone()
             qpos[free_joint_q_adr] = torch.cat(
                 [
-                    self.target_body_pos_w[env_id, 0, 0],
-                    self.target_body_quat_w[env_id, 0, 0],
+                    self.anchored_body_pos_w[env_id, 0],
+                    self.anchored_body_quat_w[env_id, 0],
                 ],
                 dim=-1,
             )

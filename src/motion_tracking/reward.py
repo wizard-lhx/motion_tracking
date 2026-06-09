@@ -55,7 +55,10 @@ class root_pos_tracking(Reward):
         self.sigma = sigma
 
     def _compute(self) -> torch.Tensor:
-        error = self.command_manager.target_body_pos_w[:, 0, 0] - self.asset.data.body_link_pos_w[:, 0]
+        error = (
+            self.command_manager.motion_anchor_pos_w
+            - self.command_manager.robot_anchor_pos_w
+        )
         return torch.exp(-error.square().sum(dim=-1, keepdim=True) / self.sigma)
 
 
@@ -66,8 +69,8 @@ class root_quat_tracking(Reward):
         self.sigma = sigma
 
     def _compute(self) -> torch.Tensor:
-        target = self.command_manager.target_body_quat_w[:, 0, 0]
-        current = self.asset.data.body_link_quat_w[:, 0]
+        target = self.command_manager.motion_anchor_quat_w
+        current = self.command_manager.robot_anchor_quat_w
         error_quat = quat_mul(target, quat_conjugate(current))
         error = axis_angle_from_quat(error_quat).square().sum(dim=-1, keepdim=True)
         return torch.exp(-error / self.sigma)
@@ -100,13 +103,7 @@ class body_pos_tracking(Reward):
         self.sigma = sigma
 
     def _compute(self) -> torch.Tensor:
-        target = _desired_pos(
-            self.asset.data.body_link_pos_w[:, 0],
-            self.asset.data.body_link_quat_w[:, 0],
-            self.command_manager.target_body_pos_w[:, 0, 0],
-            self.command_manager.target_body_quat_w[:, 0, 0],
-            self.command_manager.target_body_pos_w[:, 0, self.body_ids],
-        )
+        target = self.command_manager.anchored_body_pos_w[:, self.body_ids]
         current = self.asset.data.body_link_pos_w[:, self.body_ids]
         error = (target - current).square().sum(dim=-1).mean(dim=-1, keepdim=True)
         return torch.exp(-error / self.sigma)
@@ -118,13 +115,7 @@ class body_pos_tracking(Reward):
             return
             self._debug_draw_mjlab_ghost()
             return
-        target = _desired_pos(
-            self.asset.data.body_link_pos_w[:, 0],
-            self.asset.data.body_link_quat_w[:, 0],
-            self.command_manager.target_body_pos_w[:, 0, 0],
-            self.command_manager.target_body_quat_w[:, 0, 0],
-            self.command_manager.target_body_pos_w[:, 0, self.body_ids],
-        )
+        target = self.command_manager.anchored_body_pos_w[:, self.body_ids]
         self.env.debug_draw.point(
             target.reshape(-1, 3),
             color=(1.0, 0.0, 0.0, 1.0),
@@ -138,16 +129,8 @@ class body_pos_tracking(Reward):
         if scene is None:
             return
 
-        anchor_pos = self.asset.data.body_link_pos_w[:, 0]
-        anchor_quat = self.asset.data.body_link_quat_w[:, 0]
-        ref_anchor_pos = self.command_manager.target_body_pos_w[:, 0, 0]
-        ref_anchor_quat = self.command_manager.target_body_quat_w[:, 0, 0]
-        root_pos = _desired_anchor_pos(anchor_pos, ref_anchor_pos)
-        root_quat = _desired_quat(
-            anchor_quat,
-            ref_anchor_quat,
-            ref_anchor_quat.unsqueeze(1),
-        ).squeeze(1)
+        root_pos = self.command_manager.anchored_body_pos_w[:, 0]
+        root_quat = self.command_manager.anchored_body_quat_w[:, 0]
 
         free_joint_q_adr = self.asset.data.indexing.free_joint_q_adr
         joint_q_adr = self.asset.data.indexing.joint_q_adr
@@ -179,11 +162,7 @@ class body_rotmat_tracking(Reward):
         self.sigma = sigma
 
     def _compute(self) -> torch.Tensor:
-        target = _desired_quat(
-            self.asset.data.body_link_quat_w[:, 0],
-            self.command_manager.target_body_quat_w[:, 0, 0],
-            self.command_manager.target_body_quat_w[:, 0, self.body_ids],
-        )
+        target = self.command_manager.anchored_body_quat_w[:, self.body_ids]
         current = self.asset.data.body_link_quat_w[:, self.body_ids]
         error_quat = quat_mul(target, quat_conjugate(current))
         error = axis_angle_from_quat(error_quat).square().sum(dim=-1)
