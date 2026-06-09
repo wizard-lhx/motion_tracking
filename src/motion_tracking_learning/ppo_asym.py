@@ -55,6 +55,7 @@ from active_adaptation.learning.ppo.common import (
     CatTensors,
 )
 from active_adaptation.learning.ppo.ppo_base import PPOBase
+from active_adaptation.learning.utils.opt import MuonAdamWWrapper
 from active_adaptation.learning.utils.distributed import check_parameters
 from active_adaptation.learning.utils.dormancy import DormancyTracker
 
@@ -66,13 +67,16 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 class PPOConfig:
     _target_: str = "motion_tracking_learning.ppo_asym.PPOPolicy"
     name: str = "ppo_asym"
-    train_every: int = 24
-    ppo_epochs: int = 5
+    train_every: int = 32
+    ppo_epochs: int = 4
     num_minibatches: int = 4
-    lr: float = 1e-3
-    desired_kl: Union[float, None] = 0.01
+    lr: float = 5e-4
+    desired_kl: Union[float, None] = None
     clip_param: float = 0.2
-    entropy_coef: float = 0.005
+    entropy_coef: float = 0.002
+    optimizer: str = "adamw"
+    weight_decay: float = 0.01
+    muon: bool = False
 
     actor_hidden_dims: Tuple[int, ...] = (256, 256, 256)
     critic_hidden_dims: Tuple[int, ...] = (256, 256, 256)
@@ -86,7 +90,7 @@ class PPOConfig:
     compile: bool = False
     use_ddp: bool = True
     debug: bool = False # enable correctness checkers
-    clamp_reward: bool = False
+    clamp_reward: bool = True
 
     in_keys: Tuple[str, ...] = (OBS_KEY, OBS_PRIV_KEY)
     critic_concat_policy: bool = True
@@ -95,10 +99,20 @@ class PPOConfig:
 @dataclass
 class BeyondMimicPPOConfig(PPOConfig):
     name: str = "ppo_asym_beyondmimic"
+    train_every: int = 24
+    ppo_epochs: int = 5
+    num_minibatches: int = 4
+    lr: float = 1e-3
+    desired_kl: Union[float, None] = 0.01
+    entropy_coef: float = 0.005
+    optimizer: str = "adam"
+    weight_decay: float = 0.0
+    muon: bool = False
     actor_hidden_dims: Tuple[int, ...] = (512, 256, 128)
     critic_hidden_dims: Tuple[int, ...] = (512, 256, 128)
     activation: str = "ELU"
     empirical_normalization: bool = True
+    clamp_reward: bool = False
     critic_concat_policy: bool = False
 
 
@@ -236,13 +250,31 @@ class PPOPolicy(PPOBase):
         self.world_size = aa.get_world_size()
         self.should_reduce_grads = aa.is_distributed() and not self.cfg.use_ddp
         
-        self.opt = torch.optim.Adam(
-            [
+        if self.cfg.muon:
+            self.opt = MuonAdamWWrapper(
+                [self.actor, self.critic],
+                lr=self.cfg.lr,
+                weight_decay=self.cfg.weight_decay,
+            )
+        else:
+            param_groups = [
                 {"params": self.actor.parameters()},
                 {"params": self.critic.parameters()},
-            ],
-            lr=cfg.lr,
-        )
+            ]
+            optimizer = self.cfg.optimizer.lower()
+            if optimizer == "adam":
+                self.opt = torch.optim.Adam(
+                    param_groups,
+                    lr=self.cfg.lr,
+                )
+            elif optimizer == "adamw":
+                self.opt = torch.optim.AdamW(
+                    param_groups,
+                    lr=self.cfg.lr,
+                    weight_decay=self.cfg.weight_decay,
+                )
+            else:
+                raise ValueError(f"Unsupported PPO optimizer: {self.cfg.optimizer}")
 
         self.update = self._update
         if self.cfg.compile and not aa.is_distributed():
