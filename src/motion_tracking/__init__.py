@@ -21,10 +21,20 @@ def _register_mdp_components() -> None:
     globals()["observation"] = importlib.import_module(".observation", __name__)
     globals()["reward"] = importlib.import_module(".reward", __name__)
     globals()["termination"] = importlib.import_module(".termination", __name__)
+    globals()["randomization"] = importlib.import_module(
+        ".randomization",
+        __name__,
+    )
 
 
 def __getattr__(name: str):
-    if name in {"MotionTrackingCommand", "observation", "reward", "termination"}:
+    if name in {
+        "MotionTrackingCommand",
+        "observation",
+        "reward",
+        "termination",
+        "randomization",
+    }:
         _register_mdp_components()
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

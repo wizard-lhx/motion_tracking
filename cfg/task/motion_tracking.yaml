@@ -147,23 +147,31 @@ reward:
       body_names: "^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
 
 randomization:
-  perturb_body_mass:
-    .*: [0.8, 1.2]
   perturb_body_materials:
-    body_names: ".*ankle_roll_link"
-    static_friction_range: [0.6, 2.0]
-    dynamic_friction_range: [0.6, 2.0]
-    restitution_range: [0.0, 0.2]
-  actuator_pd_gains:
-    stiffness_range:
-      .*: [0.8, 1.1]
-    damping_range:
-      .*: [0.8, 1.1]
-  push_body:
+    body_names: ".*"
+    static_friction_range: [0.3, 1.6]
+    dynamic_friction_range: [0.3, 1.2]
+    restitution_range: [0.0, 0.5]
+  default_joint_pos:
+    _target_: motion_tracking.randomize_default_joint_pos
+    low: -0.01
+    high: 0.01
+  torso_com:
+    _target_: perturb_body_com
     body_names: "torso_link"
-    force_range: [20, 100]
-    min_interval: 100
-    decay: 0.9
+    x: [-0.025, 0.025]
+    y: [-0.05, 0.05]
+    z: [-0.05, 0.05]
+  push_robot:
+    _target_: perturb_root_vel
+    min_s: 1.0
+    max_s: 3.0
+    x: [-0.5, 0.5]
+    y: [-0.5, 0.5]
+    z: [-0.2, 0.2]
+    roll: [-0.52, 0.52]
+    pitch: [-0.52, 0.52]
+    yaw: [-0.78, 0.78]
 
 termination:
   max_episode_length: {}
