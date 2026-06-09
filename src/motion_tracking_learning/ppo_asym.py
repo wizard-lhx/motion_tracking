@@ -77,6 +77,9 @@ class PPOConfig:
     optimizer: str = "adamw"
     weight_decay: float = 0.01
     muon: bool = False
+    adaptive_lr_min: float = 1e-5
+    adaptive_lr_max: float = 1e-3
+    adaptive_lr_all_groups: bool = False
 
     actor_hidden_dims: Tuple[int, ...] = (256, 256, 256)
     critic_hidden_dims: Tuple[int, ...] = (256, 256, 256)
@@ -109,6 +112,9 @@ class BeyondMimicPPOConfig(PPOConfig):
     optimizer: str = "adam"
     weight_decay: float = 0.0
     muon: bool = False
+    adaptive_lr_min: float = 1e-5
+    adaptive_lr_max: float = 1e-2
+    adaptive_lr_all_groups: bool = True
     actor_hidden_dims: Tuple[int, ...] = (512, 256, 128)
     critic_hidden_dims: Tuple[int, ...] = (512, 256, 128)
     activation: str = "ELU"
@@ -338,10 +344,21 @@ class PPOPolicy(PPOBase):
                     kl = infos[-1]["actor/approx_kl"]
                     learning_rate = self.opt.param_groups[0]["lr"]
                     if kl > self.cfg.desired_kl * 2.0:
-                        learning_rate = max(1e-5, learning_rate / 1.5)
+                        learning_rate = max(
+                            self.cfg.adaptive_lr_min,
+                            learning_rate / 1.5,
+                        )
                     elif kl < self.cfg.desired_kl / 2.0 and kl > 0.0:
-                        learning_rate = min(1e-2, learning_rate * 1.5)
-                    for param_group in self.opt.param_groups:
+                        learning_rate = min(
+                            self.cfg.adaptive_lr_max,
+                            learning_rate * 1.5,
+                        )
+                    param_groups = (
+                        self.opt.param_groups
+                        if self.cfg.adaptive_lr_all_groups
+                        else self.opt.param_groups[:1]
+                    )
+                    for param_group in param_groups:
                         param_group["lr"] = learning_rate
             
         
