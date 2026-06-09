@@ -42,6 +42,7 @@ class MotionTrackingCommand(Command):
         reset_velocity_range: dict[str, Sequence[float]] | None = None,
         reset_joint_position_range: Sequence[float] = (0.0, 0.0),
         reset_root_velocity_from_motion: bool = False,
+        clip_reset_joint_positions: bool = False,
     ):
         super().__init__(env)
 
@@ -67,6 +68,7 @@ class MotionTrackingCommand(Command):
         self.reset_root_velocity_from_motion = bool(
             reset_root_velocity_from_motion
         )
+        self.clip_reset_joint_positions = bool(clip_reset_joint_positions)
         self.adaptive_sampling = adaptive_sampling
         if self.adaptive_sampling:
             self.adaptive_kernel_size = int(adaptive_kernel_size)
@@ -160,8 +162,9 @@ class MotionTrackingCommand(Command):
         joint_pos += torch.empty_like(joint_pos).uniform_(
             *self.reset_joint_position_range
         )
-        joint_limits = self.asset.data.soft_joint_pos_limits[env_ids]
-        joint_pos.clamp_(joint_limits[..., 0], joint_limits[..., 1])
+        if self.clip_reset_joint_positions:
+            joint_limits = self.asset.data.soft_joint_pos_limits[env_ids]
+            joint_pos.clamp_(joint_limits[..., 0], joint_limits[..., 1])
         self.init_joint_pos[env_ids] = joint_pos
         self.init_joint_vel[env_ids] = joint_vel
 
