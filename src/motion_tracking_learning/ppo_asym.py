@@ -85,6 +85,7 @@ class PPOConfig:
     compile: bool = False
     use_ddp: bool = True
     debug: bool = False # enable correctness checkers
+    clamp_reward: bool = False
 
     in_keys: Tuple[str, ...] = (OBS_KEY, OBS_PRIV_KEY)
     critic_concat_policy: bool = False
@@ -253,7 +254,13 @@ class PPOPolicy(PPOBase):
         next_keys = tensordict["next"].keys(True, True)
         if OBS_KEY in next_keys and OBS_PRIV_KEY in next_keys:
             self.critic_vecnorm(tensordict["next"])
-        self.compute_advantage(tensordict, self.critic, "adv", "ret")
+        self.compute_advantage(
+            tensordict,
+            self.critic,
+            "adv",
+            "ret",
+            clamp_reward=self.cfg.clamp_reward,
+        )
         
         action = tensordict[ACTION_KEY]
         adv_unnormalized = tensordict["adv"]

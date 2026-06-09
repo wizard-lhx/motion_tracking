@@ -7,7 +7,7 @@ viewer:
   eye: [4.0, 4.0, 4.0]
 
 robot: 
-  name: g1_waist_unlocked
+  name: g1_waist_unlocked_beyondmimic
 terrain: plane
 
 # common
@@ -124,14 +124,7 @@ reward:
     undesired_self_contacts:
       weight: 0.1
       threshold: 1.0
-      body_names:
-      - "pelvis"
-      - "waist_.*_link"
-      - "torso_link"
-      - ".*_hip_.*_link"
-      - ".*_knee_link"
-      - ".*_shoulder_.*_link"
-      - ".*_elbow_link"
+      body_names: "^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
 
 randomization:
   perturb_body_mass:
