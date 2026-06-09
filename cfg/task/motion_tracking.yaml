@@ -89,6 +89,7 @@ observation:
     joint_vel_bm: {}
     last_action_bm: {}
     body_pose_b:
+      _target_: body_pose_bm
       body_names:
       - "pelvis"
       - "left_hip_roll_link"
