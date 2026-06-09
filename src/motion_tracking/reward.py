@@ -235,5 +235,14 @@ class undesired_self_contacts(Reward):
         self.threshold = threshold
 
     def _compute(self) -> torch.Tensor:
-        forces = self.contact_sensor.data.net_forces_w[:, self.body_ids].norm(dim=-1)
+        data = self.contact_sensor.data
+        force_history = getattr(data, "net_forces_w_history", None)
+        if force_history is not None:
+            forces = force_history[:, :, self.body_ids].norm(dim=-1).max(dim=1).values
+        else:
+            force_history = getattr(data, "force_history", None)
+            if force_history is not None:
+                forces = force_history[:, self.body_ids].norm(dim=-1).max(dim=2).values
+            else:
+                forces = data.net_forces_w[:, self.body_ids].norm(dim=-1)
         return -(forces > self.threshold).float().sum(dim=-1, keepdim=True)
