@@ -32,7 +32,7 @@ class MotionTrackingCommand(Command):
         motion_id: int | None = None,
         adaptive_sampling: bool = False,
         adaptive_bin_seconds: float = 1.0,
-        adaptive_kernel_size: int = 3,
+        adaptive_kernel_size: int = 1,
         adaptive_lambda: float = 0.8,
         adaptive_uniform_ratio: float = 0.1,
         adaptive_alpha: float = 0.001,
