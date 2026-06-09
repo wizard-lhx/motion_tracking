@@ -87,6 +87,7 @@ class PPOConfig:
     debug: bool = False # enable correctness checkers
 
     in_keys: Tuple[str, ...] = (OBS_KEY, OBS_PRIV_KEY)
+    critic_concat_policy: bool = False
 
 
 cs = ConfigStore.instance()
@@ -121,7 +122,22 @@ class PPOPolicy(PPOBase):
             stats_shape=observation_spec[OBS_KEY].shape[-1:],
             decay=1.0
         )
-        critic_dim = observation_spec[OBS_KEY].shape[-1] + observation_spec[OBS_PRIV_KEY].shape[-1]
+        if self.cfg.critic_concat_policy:
+            critic_dim = (
+                observation_spec[OBS_KEY].shape[-1]
+                + observation_spec[OBS_PRIV_KEY].shape[-1]
+            )
+            critic_input = CatTensors(
+                [OBS_KEY, OBS_PRIV_KEY],
+                "_critic_input",
+                del_keys=False,
+                sort=False,
+            )
+            critic_input_key = "_critic_input"
+        else:
+            critic_dim = observation_spec[OBS_PRIV_KEY].shape[-1]
+            critic_input = Mod(nn.Identity(), [OBS_PRIV_KEY], ["_critic_input"])
+            critic_input_key = "_critic_input"
         critic_vecnorm = VecNorm(
             input_shape=(critic_dim,),
             stats_shape=(critic_dim,),
@@ -135,8 +151,8 @@ class PPOPolicy(PPOBase):
             Mod(actor_vecnorm, [OBS_KEY], ["_actor_obs_normed"])
         ).to(self.device)
         self.critic_vecnorm = Seq(
-            CatTensors([OBS_KEY, OBS_PRIV_KEY], "_critic_input", del_keys=False, sort=False),
-            Mod(critic_vecnorm, ["_critic_input"], ["_critic_obs_normed"]),
+            critic_input,
+            Mod(critic_vecnorm, [critic_input_key], ["_critic_obs_normed"]),
         ).to(self.device)
         actor_module = Seq(
             Mod(make_mlp([256, 256, 256], activation=activation), ["_actor_obs_normed"], ["_actor_feature"]),

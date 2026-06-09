@@ -155,5 +155,9 @@ class body_pose_b(Observation):
             quat_conjugate(anchor_quat_w).unsqueeze(1),
             body_quat_w,
         )
-        rel_rotmat = matrix_from_quat(rel_quat).reshape(self.num_envs, len(self.body_ids), 9)
-        return torch.cat([rel_pos, rel_rotmat], dim=-1).reshape(self.num_envs, -1)
+        rel_rot6d = matrix_from_quat(rel_quat)[..., :2].reshape(
+            self.num_envs,
+            len(self.body_ids),
+            6,
+        )
+        return torch.cat([rel_pos, rel_rot6d], dim=-1).reshape(self.num_envs, -1)

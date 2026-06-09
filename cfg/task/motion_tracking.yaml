@@ -58,7 +58,36 @@ observation:
     joint_vel_bm: {noise_amplitude: 0.5}
     last_action_bm: {}
   priv:
+    command: {}
+    motion_anchor_pos_b: {}
+    motion_anchor_ori_b: {}
+    root_lin_vel_b: {}
+    root_ang_vel_b: {}
+    joint_pos_bm: {}
+    joint_vel_bm: {}
+    last_action_bm: {}
     body_pose_b:
+      body_names:
+      - "pelvis"
+      - "left_hip_roll_link"
+      - "left_knee_link"
+      - "left_ankle_roll_link"
+      - "right_hip_roll_link"
+      - "right_knee_link"
+      - "right_ankle_roll_link"
+      - "torso_link"
+      - "left_shoulder_roll_link"
+      - "left_elbow_link"
+      - "left_wrist_yaw_link"
+      - "right_shoulder_roll_link"
+      - "right_elbow_link"
+      - "right_wrist_yaw_link"
+      anchor_body_name: "torso_link"
+
+reward:
+  tracking:
+    body_pos_tracking:
+      weight: 1.0
       body_names: &tracking_keypoints
       - "torso_link"
       - ".*_shoulder_roll_link"
@@ -67,13 +96,6 @@ observation:
       - ".*_hip_pitch_link"
       - ".*_knee_link"
       - ".*_ankle_roll_link"
-      anchor_body_name: "pelvis"
-
-reward:
-  tracking:
-    body_pos_tracking:
-      weight: 1.0
-      body_names: *tracking_keypoints
     body_rotmat_tracking:
       weight: 1.0
       body_names: *tracking_keypoints
