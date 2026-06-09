@@ -74,9 +74,9 @@ class PPOConfig:
     clip_param: float = 0.2
     entropy_coef: float = 0.005
 
-    actor_hidden_dims: Tuple[int, ...] = (512, 256, 128)
-    critic_hidden_dims: Tuple[int, ...] = (512, 256, 128)
-    activation: str = "ELU"
+    actor_hidden_dims: Tuple[int, ...] = (256, 256, 256)
+    critic_hidden_dims: Tuple[int, ...] = (256, 256, 256)
+    activation: str = "Mish"
     empirical_normalization: bool = True
     
     # symmetry options
@@ -89,11 +89,26 @@ class PPOConfig:
     clamp_reward: bool = False
 
     in_keys: Tuple[str, ...] = (OBS_KEY, OBS_PRIV_KEY)
+    critic_concat_policy: bool = True
+
+
+@dataclass
+class BeyondMimicPPOConfig(PPOConfig):
+    name: str = "ppo_asym_beyondmimic"
+    actor_hidden_dims: Tuple[int, ...] = (512, 256, 128)
+    critic_hidden_dims: Tuple[int, ...] = (512, 256, 128)
+    activation: str = "ELU"
+    empirical_normalization: bool = True
     critic_concat_policy: bool = False
 
 
 cs = ConfigStore.instance()
 cs.store("ppo_asym", node=PPOConfig, group="algo")
+cs.store(
+    "ppo_asym_beyondmimic",
+    node=BeyondMimicPPOConfig,
+    group="algo",
+)
 
 
 class PPOPolicy(PPOBase):
