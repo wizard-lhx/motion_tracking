@@ -9,6 +9,7 @@ from active_adaptation.utils.math import (
     axis_angle_from_quat,
     matrix_from_quat,
     quat_conjugate,
+    quat_from_euler_xyz,
     quat_mul,
     quat_rotate,
     quat_rotate_inverse,
@@ -35,6 +36,9 @@ class MotionTrackingCommand(Command):
         adaptive_lambda: float = 0.8,
         adaptive_uniform_ratio: float = 0.1,
         adaptive_alpha: float = 0.001,
+        reset_pose_range: dict[str, Sequence[float]] | None = None,
+        reset_velocity_range: dict[str, Sequence[float]] | None = None,
+        reset_joint_position_range: Sequence[float] = (-0.1, 0.1),
     ):
         super().__init__(env)
 
@@ -52,6 +56,9 @@ class MotionTrackingCommand(Command):
         self.anchor_body_name = anchor_body_name
         self.random_start = random_start
         self.motion_id = None if motion_id is None else int(motion_id)
+        self.reset_pose_range = reset_pose_range or {}
+        self.reset_velocity_range = reset_velocity_range or {}
+        self.reset_joint_position_range = tuple(reset_joint_position_range)
         self.adaptive_sampling = adaptive_sampling
         if self.adaptive_sampling:
             self.adaptive_kernel_size = int(adaptive_kernel_size)
@@ -140,15 +147,53 @@ class MotionTrackingCommand(Command):
             self.t[env_ids] = 0
 
         motion = self.dataset.get_slice(self.motion_ids[env_ids], self.t[env_ids])
-        self.init_joint_pos[env_ids] = motion.joint_pos[:, 0, self.joint_idx_motion]
-        self.init_joint_vel[env_ids] = motion.joint_vel[:, 0, self.joint_idx_motion]
+        joint_pos = motion.joint_pos[:, 0, self.joint_idx_motion].clone()
+        joint_vel = motion.joint_vel[:, 0, self.joint_idx_motion]
+        joint_pos += torch.empty_like(joint_pos).uniform_(
+            *self.reset_joint_position_range
+        )
+        joint_limits = self.asset.data.soft_joint_pos_limits[env_ids]
+        joint_pos.clamp_(joint_limits[..., 0], joint_limits[..., 1])
+        self.init_joint_pos[env_ids] = joint_pos
+        self.init_joint_vel[env_ids] = joint_vel
 
-        init_root_state = self.init_root_state[env_ids]
+        init_root_state = self.init_root_state[env_ids].clone()
         init_root_state[:, :3] = (
             self.env.scene.get_spawn_origins(env_ids) + motion.root_pos_w[:, 0]
         )
         init_root_state[:, 3:7] = motion.root_quat_w[:, 0]
+        init_root_state[:, 7:10] = motion.root_lin_vel_w[:, 0]
+        init_root_state[:, 10:13] = motion.root_ang_vel_w[:, 0]
+
+        pose_noise = self._sample_reset_ranges(
+            self.reset_pose_range,
+            env_ids.numel(),
+        )
+        init_root_state[:, :3] += pose_noise[:, :3]
+        init_root_state[:, 3:7] = quat_mul(
+            quat_from_euler_xyz(pose_noise[:, 3:]),
+            init_root_state[:, 3:7],
+        )
+        velocity_noise = self._sample_reset_ranges(
+            self.reset_velocity_range,
+            env_ids.numel(),
+        )
+        init_root_state[:, 7:13] += velocity_noise
         return init_root_state
+
+    def _sample_reset_ranges(
+        self,
+        ranges: dict[str, Sequence[float]],
+        count: int,
+    ) -> torch.Tensor:
+        keys = ("x", "y", "z", "roll", "pitch", "yaw")
+        bounds = torch.tensor(
+            [ranges.get(key, (0.0, 0.0)) for key in keys],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        samples = torch.rand(count, len(keys), device=self.device)
+        return bounds[:, 0] + (bounds[:, 1] - bounds[:, 0]) * samples
 
     def reset(self, env_ids: torch.Tensor) -> None:
         joint_pos = self.init_joint_pos[env_ids]
