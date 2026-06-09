@@ -55,7 +55,6 @@ from active_adaptation.learning.ppo.common import (
     CatTensors,
 )
 from active_adaptation.learning.ppo.ppo_base import PPOBase
-from active_adaptation.learning.utils.opt import MuonAdamWWrapper
 from active_adaptation.learning.utils.distributed import check_parameters
 from active_adaptation.learning.utils.dormancy import DormancyTracker
 
@@ -67,19 +66,18 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 class PPOConfig:
     _target_: str = "motion_tracking_learning.ppo_asym.PPOPolicy"
     name: str = "ppo_asym"
-    train_every: int = 32
-    ppo_epochs: int = 4
+    train_every: int = 24
+    ppo_epochs: int = 5
     num_minibatches: int = 4
-    lr: float = 5e-4
-    desired_kl: Union[float, None] = None
+    lr: float = 1e-3
+    desired_kl: Union[float, None] = 0.01
     clip_param: float = 0.2
-    entropy_coef: float = 0.002
+    entropy_coef: float = 0.005
 
     actor_hidden_dims: Tuple[int, ...] = (512, 256, 128)
     critic_hidden_dims: Tuple[int, ...] = (512, 256, 128)
     activation: str = "ELU"
     empirical_normalization: bool = True
-    muon: bool = False # use Muon optimizer
     
     # symmetry options
     symnet: bool = False # use symmetry wrapper to wrap the policy and critic
@@ -223,21 +221,13 @@ class PPOPolicy(PPOBase):
         self.world_size = aa.get_world_size()
         self.should_reduce_grads = aa.is_distributed() and not self.cfg.use_ddp
         
-        if self.cfg.muon:
-            self.opt = MuonAdamWWrapper(
-                [self.actor, self.critic],
-                lr=cfg.lr,
-                weight_decay=0.01
-            )
-        else:
-            self.opt = torch.optim.AdamW(
-                [
-                    {"params": self.actor.parameters()},
-                    {"params": self.critic.parameters()},
-                ],
-                lr=cfg.lr,
-                weight_decay=0.01
-            )
+        self.opt = torch.optim.Adam(
+            [
+                {"params": self.actor.parameters()},
+                {"params": self.critic.parameters()},
+            ],
+            lr=cfg.lr,
+        )
 
         self.update = self._update
         if self.cfg.compile and not aa.is_distributed():
@@ -297,12 +287,13 @@ class PPOPolicy(PPOBase):
 
                 if self.cfg.desired_kl is not None: # adaptive learning rate
                     kl = infos[-1]["actor/approx_kl"]
-                    actor_lr = self.opt.param_groups[0]["lr"]
+                    learning_rate = self.opt.param_groups[0]["lr"]
                     if kl > self.cfg.desired_kl * 2.0:
-                        actor_lr = max(1e-5, actor_lr / 1.5)
+                        learning_rate = max(1e-5, learning_rate / 1.5)
                     elif kl < self.cfg.desired_kl / 2.0 and kl > 0.0:
-                        actor_lr = min(1e-3, actor_lr * 1.5)
-                    self.opt.param_groups[0]["lr"] = actor_lr
+                        learning_rate = min(1e-2, learning_rate * 1.5)
+                    for param_group in self.opt.param_groups:
+                        param_group["lr"] = learning_rate
             
         
         with torch.no_grad():
