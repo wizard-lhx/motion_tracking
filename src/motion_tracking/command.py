@@ -28,6 +28,7 @@ class MotionTrackingCommand(Command):
         data_path: str = "100style",
         future_steps: Sequence[int] = (0, 12, 24, 36),
         anchor_body_name: str = "pelvis",
+        single_step_command: bool = False,
         random_start: bool = False,
         motion_id: int | None = None,
         adaptive_sampling: bool = False,
@@ -54,6 +55,7 @@ class MotionTrackingCommand(Command):
         )
         self.max_future_step = int(self.future_steps.max().item())
         self.anchor_body_name = anchor_body_name
+        self.single_step_command = bool(single_step_command)
         self.random_start = random_start
         self.motion_id = None if motion_id is None else int(motion_id)
         self.reset_pose_range = reset_pose_range or {}
@@ -216,7 +218,20 @@ class MotionTrackingCommand(Command):
 
     @property
     def teacher_command(self) -> torch.Tensor:
-        return torch.cat([self.target_joint_pos, self.target_joint_vel], dim=-1)
+        if self.single_step_command:
+            return torch.cat(
+                [self.target_joint_pos, self.target_joint_vel],
+                dim=-1,
+            )
+        return torch.cat(
+            [
+                self.root_pos_error_b,
+                self.root_ori_error,
+                self.target_joint_pos_future.reshape(self.num_envs, -1),
+                self.target_joint_vel_future.reshape(self.num_envs, -1),
+            ],
+            dim=-1,
+        )
 
     @property
     def robot_anchor_pos_w(self) -> torch.Tensor:
