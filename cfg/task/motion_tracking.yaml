@@ -12,7 +12,7 @@ terrain: plane
 
 # common
 num_envs: 1
-max_episode_length: 1000
+max_episode_length: 500
 
 sim:
   step_dt: 0.02
@@ -147,20 +147,14 @@ randomization:
 
 termination:
   max_episode_length: {}
-  motion_finished: {}
-  # body_pos_z_error:
-  #   threshold: 0.25
-  #   body_names:
-  #   - "pelvis"
-  #   - ".*_ankle_roll_link"
-  #   - ".*_wrist_yaw_link"
+  anchor_pos_z_error:
+    threshold: 0.25
   anchor_ori_error:
     threshold: 0.8
-  crash: 
-    body_names_expr:
-    - "pelvis"
-    - "torso_link"
-    - ".*_hip_.*_link"
-    - ".*shoulder_.*_link"
-    - ".*(wrist|elbow).*"
-  fall_over: {xy_thres: 0.9}
+  body_pos_z_error:
+    threshold: 0.25
+    body_names:
+    - "left_ankle_roll_link"
+    - "right_ankle_roll_link"
+    - "left_wrist_yaw_link"
+    - "right_wrist_yaw_link"

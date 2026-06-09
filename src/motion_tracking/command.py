@@ -291,7 +291,19 @@ class MotionTrackingCommand(Command):
         max_t = (
             self.motion_lengths[self.motion_ids] - self.max_future_step - 1
         ).clamp_min(0)
-        self.t = torch.minimum(self.t + 1, max_t)
+        next_t = self.t + 1
+        finished_env_ids = torch.nonzero(
+            next_t >= max_t,
+            as_tuple=False,
+        ).flatten()
+        self.t = torch.minimum(next_t, max_t)
+        if finished_env_ids.numel() > 0:
+            root_state = self.sample_init(finished_env_ids)
+            self.asset.write_root_state_to_sim(
+                root_state,
+                env_ids=finished_env_ids,
+            )
+            self.reset(finished_env_ids)
         self._update_targets()
 
     def _sample_adaptive_frames(self, motion_ids: torch.Tensor) -> torch.Tensor:
