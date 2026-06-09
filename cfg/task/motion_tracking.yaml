@@ -69,6 +69,7 @@ command:
     pitch: [-0.52, 0.52]
     yaw: [-0.78, 0.78]
   reset_joint_position_range: [-0.1, 0.1]
+  reset_root_velocity_from_motion: true
 
 observation:
   policy:

@@ -40,7 +40,8 @@ class MotionTrackingCommand(Command):
         adaptive_alpha: float = 0.001,
         reset_pose_range: dict[str, Sequence[float]] | None = None,
         reset_velocity_range: dict[str, Sequence[float]] | None = None,
-        reset_joint_position_range: Sequence[float] = (-0.1, 0.1),
+        reset_joint_position_range: Sequence[float] = (0.0, 0.0),
+        reset_root_velocity_from_motion: bool = False,
     ):
         super().__init__(env)
 
@@ -63,6 +64,9 @@ class MotionTrackingCommand(Command):
         self.reset_pose_range = reset_pose_range or {}
         self.reset_velocity_range = reset_velocity_range or {}
         self.reset_joint_position_range = tuple(reset_joint_position_range)
+        self.reset_root_velocity_from_motion = bool(
+            reset_root_velocity_from_motion
+        )
         self.adaptive_sampling = adaptive_sampling
         if self.adaptive_sampling:
             self.adaptive_kernel_size = int(adaptive_kernel_size)
@@ -166,8 +170,9 @@ class MotionTrackingCommand(Command):
             self.env.scene.get_spawn_origins(env_ids) + motion.root_pos_w[:, 0]
         )
         init_root_state[:, 3:7] = motion.root_quat_w[:, 0]
-        init_root_state[:, 7:10] = motion.root_lin_vel_w[:, 0]
-        init_root_state[:, 10:13] = motion.root_ang_vel_w[:, 0]
+        if self.reset_root_velocity_from_motion:
+            init_root_state[:, 7:10] = motion.root_lin_vel_w[:, 0]
+            init_root_state[:, 10:13] = motion.root_ang_vel_w[:, 0]
 
         pose_noise = self._sample_reset_ranges(
             self.reset_pose_range,
